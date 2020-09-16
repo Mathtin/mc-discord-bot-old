@@ -20,6 +20,8 @@ BOT_NAME = "ECC MC Manager"
 
 CONTROL_PREFIX = "!"
 
+PERSIST_WHITELIST_PATH = "persist_whitelist.json"
+
 LOGGER_CONFIG = { 
     'version': 1,
     'disable_existing_loggers': False,
@@ -67,8 +69,8 @@ channels = {
     # Special
 
     # "log": 0,
-    "error": 1,
-    "control": 1,
+    "error": 2,
+    "control": 2,
 
 
     # User defined
@@ -84,8 +86,13 @@ hooks = {
     },
 
     "control": {
-        "db": 'manager.show_db',
         "send": 'manager.send_to_sink',
+        "ping": 'manager.ping',
+        "reload": 'manager.reload',
+        "db": 'manager.show_db',
+        "pdb": 'manager.show_persist_db',
+        "pdb-add": 'manager.add_persist_profile',
+        "pdb-rm": 'manager.remove_persist_profile',
     }
 }
 
