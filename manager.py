@@ -21,7 +21,6 @@ import uuid
 import os
 import os.path
 import paramiko
-import pickle
 from base64 import b64decode
 
 import pysftp
@@ -193,7 +192,6 @@ def load_persist_db():
             log.error("Failed to load persist database, removing invalid data")
             persist_db = {}
             save_persist_db()
-load_persist_db()
 
 #paramiko.common.logging.basicConfig(level=paramiko.common.DEBUG)
 def sync_whitelist():
@@ -280,6 +278,7 @@ async def handle_new_profile(clien: bot.DiscordBot, profile: discord.Message):
 ##################
 
 async def init(client: bot.DiscordBot):
+    load_persist_db()
     profile_channel = client.get_attached_sink("profile")["channel"]
     async for message in profile_channel.history(limit=None,oldest_first=True):
         user = message.author
