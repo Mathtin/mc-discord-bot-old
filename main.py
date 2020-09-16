@@ -15,7 +15,6 @@ __author__ = 'Mathtin'
 
 import sys
 import bot
-import manager
 import config
 import logging.config
 

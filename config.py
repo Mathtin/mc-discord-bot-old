@@ -14,7 +14,7 @@
 __author__ = 'Mathtin'
 
 import logging.config
-import botlog
+import util
 
 BOT_NAME = "ECC MC Manager"
 
@@ -48,7 +48,7 @@ LOGGER_CONFIG = {
         'discord-channel': { 
             'level': 'WARN',
             'formatter': 'standard',
-            '()': botlog.DiscordBotLogHandler,
+            '()': util.DiscordBotLogHandler,
             'bot': BOT_NAME
         },
     },
@@ -82,15 +82,15 @@ hooks = {
     "init": 'manager.init',
 
     "message": {
-        "profile": 'manager.new_profile'
-    },
-
-    "message_edit": {
-        "profile": 'manager.edit_profile'
-    },
-
-    "message_delete": {
-        "profile": 'manager.delete_profile'
+        "new": {
+            "profile": 'manager.new_profile'
+        },
+        "edit": {
+            "profile": 'manager.edit_profile'
+        },
+        "delete": {
+            "profile": 'manager.delete_profile'
+        },
     },
 
     "member": {

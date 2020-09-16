@@ -27,6 +27,7 @@ import pysftp
 import discord
 import bot
 import config
+from util import *
 from mcuuid import GetPlayerData
 from pydactyl import PterodactylClient
 
@@ -63,23 +64,6 @@ PERSIST_DB_LINE_TEMPLATE = """{{
     "ign":       {ign}, 
     "uuid":      {uuid}
 }}"""
-
-
-#################
-# Utility Funcs #
-#################
-
-def quote_msg(msg):
-    return '\n'.join(['> ' + s for s in msg.split('\n')])
-
-def config_path(path, default):
-    node = config.manager
-    for el in path.split('.'):
-        if el in node:
-            node = node[el]
-        else:
-            return default
-    return node
 
 #####################
 # Message Templates #
@@ -122,19 +106,6 @@ And btw I had to remove it but don't worry. Here is copy of your message:
 db = {}
 persist_db = {}
 ptero = PterodactylClient(PTERO_HTTP, os.environ.get("PTERODACTYL_TOKEN"))
-
-###########################
-# Bot model utility funcs #
-###########################
-
-def is_admin_message(msg: discord.Message):
-    for role in msg.author.roles:
-        if role.name in config.roles["admin"]:
-            return True
-    return False
-
-def is_user_member(user: discord.User):
-    return isinstance(user, discord.Member)
 
 ##########################
 # Profile utility funcs #
@@ -416,11 +387,11 @@ async def user_left(client: bot.DiscordBot, member: discord.Member):
 # Control command Handlers #
 ############################
 
-@bot.cmd
+@cmdcoro
 async def ping(client: bot.DiscordBot, mgs_obj: discord.Message):
     await mgs_obj.channel.send("pong")
 
-@bot.cmd
+@cmdcoro
 async def show_db(client: bot.DiscordBot, mgs_obj: discord.Message):
     if not db:
         await mgs_obj.channel.send("Database is empty")
@@ -428,7 +399,7 @@ async def show_db(client: bot.DiscordBot, mgs_obj: discord.Message):
         row_str = '`' + db_row_to_str(db[id]).replace('`', '\'') + '`'
         await mgs_obj.channel.send(row_str)
 
-@bot.cmd
+@cmdcoro
 async def show_persist_db(client: bot.DiscordBot, mgs_obj: discord.Message):
     if not persist_db:
         await mgs_obj.channel.send("Database is empty")
@@ -436,7 +407,7 @@ async def show_persist_db(client: bot.DiscordBot, mgs_obj: discord.Message):
         row_str = '`' + persist_db_row_to_str(persist_db[id]).replace('`', '\'') + '`'
         await mgs_obj.channel.send(row_str)
 
-@bot.cmd
+@cmdcoro
 async def send_to_sink(client: bot.DiscordBot, mgs_obj: discord.Message, sink_name: str, message: str):
     sink = client.get_attached_sink(sink_name)
     if sink is None:
@@ -446,7 +417,7 @@ async def send_to_sink(client: bot.DiscordBot, mgs_obj: discord.Message, sink_na
     await channel.send(message)
     await mgs_obj.channel.send(f"Message sent to {channel.mention}")
 
-@bot.cmd
+@cmdcoro
 async def add_persist_profile(client: bot.DiscordBot, mgs_obj: discord.Message, ign: str):
     profile = make_persist_profile(mgs_obj, ign)
     if profile is None:
@@ -463,7 +434,7 @@ async def add_persist_profile(client: bot.DiscordBot, mgs_obj: discord.Message, 
     sync_whitelist()
     await mgs_obj.channel.send(f"Added successfully")
 
-@bot.cmd
+@cmdcoro
 async def remove_persist_profile(client: bot.DiscordBot, mgs_obj: discord.Message, ign: str):
     if ign not in persist_db:
         await mgs_obj.channel.send(f"Specified ign not added yet")
@@ -475,7 +446,7 @@ async def remove_persist_profile(client: bot.DiscordBot, mgs_obj: discord.Messag
     sync_whitelist()
     await mgs_obj.channel.send(f"Removed successfully")
 
-@bot.cmd
+@cmdcoro
 async def reload(client: bot.DiscordBot, mgs_obj: discord.Message):
     await mgs_obj.channel.send(f"Reloading")
     await init(client)
