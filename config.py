@@ -16,9 +16,11 @@ __author__ = 'Mathtin'
 import logging.config
 import botlog
 
-bot_name = "ECC MC Manager"
+BOT_NAME = "ECC MC Manager"
 
-logging.config.dictConfig({ 
+CONTROL_PREFIX = "!"
+
+LOGGER_CONFIG = { 
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
@@ -45,7 +47,7 @@ logging.config.dictConfig({
             'level': 'WARN',
             'formatter': 'standard',
             '()': botlog.DiscordBotLogHandler,
-            'bot': bot_name
+            'bot': BOT_NAME
         },
     },
     'loggers': {
@@ -58,17 +60,35 @@ logging.config.dictConfig({
             'level': 'INFO'
         }
     } 
-})
-
-import manager
+}
 
 channels = {
-    "test": 0
+
+    # Special
+
+    # "log": 0,
+    "error": 0,
+    "control": 0,
+
+
+    # User defined
+
+    "profile": 0
 }
 
 hooks = {
-    "init": manager.init,
+    "init": 'manager.init',
+
     "message": {
-        "test": manager.test_message
+        "profile": 'manager.new_profile'
+    },
+
+    "control": {
+        "db": 'manager.show_db',
+        "send": 'manager.send_to_sink',
     }
+}
+
+roles = {
+    "admin": ["Headquarter"]
 }

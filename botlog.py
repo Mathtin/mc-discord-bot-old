@@ -34,7 +34,7 @@ class DiscordBotLogHandler(logging.Handler):
             return
 
         try:
-            msg = self.format(record)
+            msg = '`' + self.format(record).replace('`', '\'') + '`'
             self.client.send_log(msg)
         except RecursionError:
             raise

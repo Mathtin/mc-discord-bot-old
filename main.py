@@ -15,8 +15,14 @@ __author__ = 'Mathtin'
 
 import sys
 import bot
+import config
+import logging.config
+
+from dotenv import load_dotenv
+load_dotenv()
 
 def main(argv):
+    logging.config.dictConfig(config.LOGGER_CONFIG)
     discord_bot = bot.DiscordBot()
     discord_bot.run()
 
