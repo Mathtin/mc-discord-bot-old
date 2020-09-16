@@ -1,4 +1,6 @@
 pydactyl
 discord.py
 python-dotenv
-mcuuid
+py-dactyl
+paramiko
+pysftp

@@ -16,17 +16,30 @@ __author__ = 'Mathtin'
 import logging
 import re
 import json
+import tempfile
+import uuid
+import os
+import paramiko
+from base64 import b64decode
+
+import pysftp
 import discord
 import bot
-import tempfile
 import config
 from mcuuid import GetPlayerData
+from pydactyl import PterodactylClient
+
+from dotenv import load_dotenv
+load_dotenv()
 
 log = logging.getLogger('manager-hooks')
 
 PROFILE_PATTERN = re.compile(r"^\s*IGN\s*:(.+?)Age\s*:(.+?)Country\s*:(.+?)Playstyle & mods you like\s*:(.+?)Random info\s*:(.+?)$", re.DOTALL)
 
 db = {}
+PTERO_DOMAIN = os.environ.get("PTERODACTYL_DOMAIN")
+PTERO_HTTP = 'http://' + PTERO_DOMAIN
+ptero = PterodactylClient(PTERO_HTTP, os.environ.get("PTERODACTYL_TOKEN"))
 
 def quote_msg(msg):
     return '\n'.join(['> ' + s for s in msg.split('\n')])
@@ -61,22 +74,37 @@ And btw I had to remove it but don't worry. Here is copy of your message:
 {1}
 """
 
-DB_LINE_TEMPLATE = """{{ "user": {user}, "ign":     {ign},
-  "age":  {age},  "country": {country},
-  "playstyle": {playstyle},
-  "info":      {info} }}"""
+DB_LINE_TEMPLATE = """{{
+    "user":      {user}, 
+    "ign":       {ign}, 
+    "uuid":      {uuid},
+    "age":       {age},  
+    "country":   {country},
+    "playstyle": {playstyle},
+    "info":      {info}
+}}"""
 
 def db_row_to_str(row: dict):
     obj = {
         'user': json.dumps(row['msg'].author.display_name),
         'ign': json.dumps(row['player'].username),
-        'uuid': json.dumps(row['player'].uuid),
+        'uuid': json.dumps(str(row['player'].uuid)),
         'age': json.dumps(row['age']),
         'country': json.dumps(row['country']),
         'playstyle': json.dumps(row['playstyle']),
         'info': json.dumps(row['info'])
     }
     return DB_LINE_TEMPLATE.format(**obj)
+
+def get_whitelist_json():
+    res = []
+    for id in db:
+        player = db[id]['player']
+        res.append ({
+            'uuid' : str(player.uuid),
+            'name' : player.username
+        })
+    return json.dumps(res)
 
 def is_admin_message(msg: discord.Message):
     for role in msg.author.roles:
@@ -115,9 +143,22 @@ def is_invalid_profile(profile: dict):
 # Async Handlers #
 ##################
 
-async def sync_whitelist():
-    tmp_file = tempfile.mktemp()
-
+#paramiko.common.logging.basicConfig(level=paramiko.common.DEBUG)
+def sync_whitelist():
+    #tmp_file_name = tempfile.mktemp()
+    tmp_file_name = "whitelist.json"
+    with open(tmp_file_name, "w") as f:
+        f.write(get_whitelist_json())
+    servers = ptero.client.list_servers().data['data']
+    for server in servers:
+        cnopts = pysftp.CnOpts()
+        cnopts.hostkeys = None
+        srv_id = server['attributes']['identifier']
+        username = f'{os.environ.get("PTERODACTYL_USERNAME")}.{srv_id}'
+        password = os.environ.get("PTERODACTYL_PASSWORD")
+        with pysftp.Connection(PTERO_DOMAIN, username=username, password=password, cnopts=cnopts, port=2022) as sftp:
+            sftp.put(tmp_file_name, "/whitelist.json")
+        ptero.client.send_console_command(srv_id, "whitelist reload")
 
 async def handle_profile_message(client: bot.DiscordBot, message: discord.Message):
     profile = parse_profile(message)
@@ -141,6 +182,8 @@ async def handle_profile_message(client: bot.DiscordBot, message: discord.Messag
 
     await handle_new_profile(client, profile)
 
+    sync_whitelist()
+
 async def handle_invalid_profile(client: bot.DiscordBot, message: discord.Message, profile: dict):
     user = message.author
     await message.delete()
@@ -163,7 +206,7 @@ async def handle_duplicate_profile_ign(client: bot.DiscordBot, profile: dict):
     user = message.author
     or_profile = db[profile['ign']]
     or_user = or_profile['msg'].author
-    log.warn(f"Removing {user.mention}'s profile. Reason: duplicate ign. Profile: {str(profile)}, original profile from {or_user.mention}: {str(or_profile)}")
+    log.warn(f"Removing {user.name}'s profile. Reason: duplicate ign. Profile: {str(profile)}, original profile from {or_user.mention}: {str(or_profile)}")
     await message.delete()
     await user.send(FOREIGN_PROFILE_DM_MSG.format(user.name, quote_msg(message.content)))
 

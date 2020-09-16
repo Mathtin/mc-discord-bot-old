@@ -67,8 +67,8 @@ channels = {
     # Special
 
     # "log": 0,
-    "error": 0,
-    "control": 0,
+    "error": 1,
+    "control": 1,
 
 
     # User defined
@@ -90,5 +90,5 @@ hooks = {
 }
 
 roles = {
-    "admin": ["Headquarter"]
+    "admin": ["Admin"]
 }

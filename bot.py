@@ -27,6 +27,9 @@ import discord
 
 from discord import ChannelType
 
+from dotenv import load_dotenv
+load_dotenv()
+
 log = logging.getLogger('mc-discord-bot')
 
 def get_channel_env_var_name(n):

@@ -20,6 +20,7 @@ Uses the official Mojang API to fetch player data.
 ### Import necessary modules
 import http.client
 import json
+from uuid import UUID
 
 def is_valid_minecraft_username(username):
     """https://help.mojang.com/customer/portal/articles/928638-minecraft-usernames"""
@@ -128,3 +129,4 @@ class GetPlayerData:
 
                     # The username written correctly
                     self.username = current_name
+                self.uuid = UUID(self.uuid)
