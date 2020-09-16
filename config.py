@@ -16,7 +16,7 @@ __author__ = 'Mathtin'
 import logging.config
 import util
 
-BOT_NAME = "ECC MC Manager"
+BOT_NAME = "MC Manager"
 
 CONTROL_PREFIX = "!"
 
