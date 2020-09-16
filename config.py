@@ -75,7 +75,7 @@ channels = {
 
     # User defined
 
-    "profile": 0
+    "profile": 2
 }
 
 hooks = {
@@ -83,6 +83,18 @@ hooks = {
 
     "message": {
         "profile": 'manager.new_profile'
+    },
+
+    "message_edit": {
+        "profile": 'manager.edit_profile'
+    },
+
+    "message_delete": {
+        "profile": 'manager.delete_profile'
+    },
+
+    "member": {
+        'remove': 'manager.user_left'
     },
 
     "control": {
@@ -98,4 +110,37 @@ hooks = {
 
 roles = {
     "admin": ["Admin"]
+}
+
+manager = {
+    "whitelist": {
+        "upload": False,
+        "reload": False,
+    },
+
+    "profile": {
+        "update": {
+            "old": {
+                "delete": False
+            }
+        },
+        "invalid": {
+            "ign": {
+                "delete": False,
+                "dm": False
+            },
+            "duplicate": {
+                "delete": False,
+                "dm": False
+            },
+            "default": {
+                "delete": False,
+                "dm": False
+            },
+        },
+        "deprecated": {
+            "delete": False,
+            "whitelist": False
+        }
+    }
 }

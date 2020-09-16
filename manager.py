@@ -35,16 +35,55 @@ load_dotenv()
 
 log = logging.getLogger('manager-hooks')
 
-PROFILE_PATTERN = re.compile(r"^\s*IGN\s*:(.+?)Age\s*:(.+?)Country\s*:(.+?)Playstyle & mods you like\s*:(.+?)Random info\s*:(.+?)$", re.DOTALL + re.IGNORECASE)
+##########
+# Consts #
+##########
 
-db = {}
-persist_db = {}
 PTERO_DOMAIN = os.environ.get("PTERODACTYL_DOMAIN")
 PTERO_HTTP = 'http://' + PTERO_DOMAIN
-ptero = PterodactylClient(PTERO_HTTP, os.environ.get("PTERODACTYL_TOKEN"))
+
+#####################
+# Profile Templates #
+#####################
+
+PROFILE_PATTERN = re.compile(r"^\s*IGN\s*:(.+?)Age\s*:(.+?)Country\s*:(.+?)Playstyle & mods you like\s*:(.+?)Random info\s*:(.+?)$", re.DOTALL + re.IGNORECASE)
+
+DB_LINE_TEMPLATE = """{{
+    "user":      {user}, 
+    "ign":       {ign}, 
+    "uuid":      {uuid},
+    "age":       {age},  
+    "country":   {country},
+    "playstyle": {playstyle},
+    "info":      {info}
+}}"""
+
+PERSIST_DB_LINE_TEMPLATE = """{{
+    "user":      {user}, 
+    "ign":       {ign}, 
+    "uuid":      {uuid}
+}}"""
+
+
+#################
+# Utility Funcs #
+#################
 
 def quote_msg(msg):
     return '\n'.join(['> ' + s for s in msg.split('\n')])
+
+def config_path(path, default):
+    node = config.manager
+    for el in path.split('.'):
+        if el in node:
+            node = node[el]
+        else:
+            return default
+    return node
+
+#####################
+# Message Templates #
+#####################
 
 PROFILE_EXAMPLE = """IGN: MyCoolMinecraftNickname
 Age: 18
@@ -76,21 +115,68 @@ And btw I had to remove it but don't worry. Here is copy of your message:
 {1}
 """
 
-DB_LINE_TEMPLATE = """{{
-    "user":      {user}, 
-    "ign":       {ign}, 
-    "uuid":      {uuid},
-    "age":       {age},  
-    "country":   {country},
-    "playstyle": {playstyle},
-    "info":      {info}
-}}"""
+##################
+# Module globals #
+##################
 
-PERSIST_DB_LINE_TEMPLATE = """{{
-    "user":      {user}, 
-    "ign":       {ign}, 
-    "uuid":      {uuid}
-}}"""
+db = {}
+persist_db = {}
+ptero = PterodactylClient(PTERO_HTTP, os.environ.get("PTERODACTYL_TOKEN"))
+
+###########################
+# Bot model utility funcs #
+###########################
+
+def is_admin_message(msg: discord.Message):
+    for role in msg.author.roles:
+        if role.name in config.roles["admin"]:
+            return True
+    return False
+
+def is_user_member(user: discord.User):
+    return isinstance(user, discord.Member)
+
+##########################
+# Profile utility funcs #
+##########################
+
+def parse_profile(profile_msg: discord.Message):
+    m = PROFILE_PATTERN.fullmatch(profile_msg.content)
+    if m is None:
+        return None
+    ign = m.group(1).strip()
+    return {
+        'ign': ign,
+        'age': m.group(2).strip(),
+        'country': m.group(3).strip(),
+        'playstyle': m.group(4).strip(),
+        'info': m.group(5).strip(),
+        'msg': profile_msg,
+        'player': GetPlayerData(ign)
+    }
+
+def is_partially_empty_profile(profile: dict):
+    for key in profile:
+        if profile[key] == "":
+            return True
+    return False
+
+def is_invalid_profile(profile: dict):
+    return profile is None or is_partially_empty_profile(profile) or not profile['player'].valid
+
+def make_persist_profile(message: discord.Message, ign: str):
+    player = GetPlayerData(ign)
+    if not player.valid:
+        return None
+    return {
+        'ign': ign,
+        'author': message.author.name,
+        'uuid': str(player.uuid)
+    }
+
+########################
+# Whitelist DB Methods #
+########################
 
 def db_row_to_str(row: dict):
     obj = {
@@ -130,54 +216,6 @@ def get_whitelist_json():
         })
     return json.dumps(res)
 
-def is_admin_message(msg: discord.Message):
-    for role in msg.author.roles:
-        if role.name in config.roles["admin"]:
-            return True
-    return False
-
-def is_user_member(user: discord.User):
-    return isinstance(user, discord.Member)
-
-def parse_profile(profile_msg: discord.Message):
-    m = PROFILE_PATTERN.fullmatch(profile_msg.content)
-    if m is None:
-        return None
-    ign = m.group(1).strip()
-    return {
-        'ign': ign,
-        'age': m.group(2).strip(),
-        'country': m.group(3).strip(),
-        'playstyle': m.group(4).strip(),
-        'info': m.group(5).strip(),
-        'msg': profile_msg,
-        'player': GetPlayerData(ign)
-    }
-
-def is_partially_empty_profile(profile: dict):
-    for key in profile:
-        if profile[key] == "":
-            return True
-    return False
-
-def is_invalid_profile(profile: dict):
-    return profile is None or is_partially_empty_profile(profile) or not profile['player'].valid
-
-def persist_profile(message: discord.Message, ign: str):
-    player = GetPlayerData(ign)
-    if not player.valid:
-        return None
-    return {
-        'ign': ign,
-        'author': message.author.name,
-        'uuid': str(player.uuid)
-    }
-
-
-##################
-# Async Handlers #
-##################
-
 def save_persist_db():
     with open(config.PERSIST_WHITELIST_PATH, "w") as f:
         json.dump(persist_db, f)
@@ -207,68 +245,112 @@ def sync_whitelist():
         srv_id = server['attributes']['identifier']
         username = f'{os.environ.get("PTERODACTYL_USERNAME")}.{srv_id}'
         password = os.environ.get("PTERODACTYL_PASSWORD")
-        continue
-        with pysftp.Connection(PTERO_DOMAIN, username=username, password=password, cnopts=cnopts, port=2022) as sftp:
-            sftp.put(tmp_file_name, "/whitelist.json")
-        ptero.client.send_console_command(srv_id, "whitelist reload")
+        if config_path("whitelist.upload", False):
+            with pysftp.Connection(PTERO_DOMAIN, username=username, password=password, cnopts=cnopts, port=2022) as sftp:
+                sftp.put(tmp_file_name, "/whitelist.json")
+        if config_path("whitelist.reload", False):
+            ptero.client.send_console_command(srv_id, "whitelist reload")
+
+####################
+# Profile Handlers #
+####################
 
 async def handle_profile_message(client: bot.DiscordBot, message: discord.Message):
     profile = parse_profile(message)
 
-    if profile is None and is_admin_message(message):
-        log.warn(f'Ignoring message from {message.author.name} as admin\'s message: {message.content}')
-        return
-
     if is_invalid_profile(profile):
-        await handle_invalid_profile(client, message, profile)
+        if is_admin_message(message):
+            log.info(f'Ignoring message from {message.author.name} as admin\'s message: {message.content}')
+        else:
+            await handle_invalid_profile(client, message, profile)
         return
 
-    if profile['ign'] in db and db[profile['ign']]['msg'].author.id == message.author.id:
-        await handle_profile_update(client, profile)
-        return
+    ign = profile['ign']
 
     # If user trying to add profile with duplicate ign
-    if profile['ign'] in db:
-        await handle_duplicate_profile_ign(client, profile)
+    if ign in db:
+        if db[ign]['msg'].author.id == message.author.id:
+            await handle_profile_update(client, profile)
+        else:
+            await handle_duplicate_profile_ign(client, profile)
+    else:
+        await handle_new_profile(client, profile)
+
+    sync_whitelist()
+
+async def handle_deprecated_profile_message(client: bot.DiscordBot, message: discord.Message):
+    profile = parse_profile(message)
+
+    if is_invalid_profile(profile):
+        if config_path("profile.invalid.default.delete", False):
+            await message.delete()
         return
 
-    await handle_new_profile(client, profile)
+    ign = profile['ign']
+
+    # If user trying to add profile with duplicate ign
+    if ign in db:
+        if db[ign]['msg'].author.id == message.author.id:
+            await handle_profile_update(client, profile)
+        else:
+            await handle_duplicate_deprecated_profile_ign(client, profile)
+    else:
+        await handle_new_profile(client, profile)
 
     sync_whitelist()
 
 async def handle_invalid_profile(client: bot.DiscordBot, message: discord.Message, profile: dict):
     user = message.author
-    #await message.delete()
     if profile is None:
-        #await user.send(INVALID_PROFILE_DM_MSG.format(user.name, quote_msg(message.content)))
-        #await client.control_channel.send("Invalid profile by {0}:\n{1}".format(user.mention, quote_msg(message.content)))
-        await client.control_channel.send("Invalid profile by {0}".format(user.mention))
+        log.info(f"Invalid profile by {user.name}: {json.dumps(message.content)}")
+        if config_path("profile.invalid.default.delete", False):
+            await message.delete()
+        if config_path("profile.invalid.default.dm", False):
+            await user.send(INVALID_PROFILE_DM_MSG.format(user.name, quote_msg(message.content)))
     elif not profile['player'].valid:
-        #await user.send(INVALID_PROFILE_IGN_DM_MSG.format(user.name, quote_msg(message.content)))
-        #await client.control_channel.send("Invalid ign by {0}:\n{1}".format(user.mention, quote_msg(message.content)))
-        await client.control_channel.send("Invalid ign by {0}".format(user.mention))
+        log.info(f"Invalid ign by {user.name}: {json.dumps(message.content)}")
+        if config_path("profile.invalid.ign.delete", False):
+            await message.delete()
+        if config_path("profile.invalid.ign.dm", False):
+            await user.send(INVALID_PROFILE_IGN_DM_MSG.format(user.name, quote_msg(message.content)))
     else:
-        #await user.send(INVALID_PROFILE_DM_MSG.format(user.name, quote_msg(message.content)))
-        #await client.control_channel.send("Invalid profile by {0}:\n{1}".format(user.mention, quote_msg(message.content)))
-        await client.control_channel.send("Invalid profile by {0}".format(user.mention))
+        log.info(f"Invalid profile by {user.name}: {json.dumps(message.content)}")
+        if config_path("profile.invalid.default.delete", False):
+            await message.delete()
+        if config_path("profile.invalid.default.dm", False):
+            await user.send(INVALID_PROFILE_DM_MSG.format(user.name, quote_msg(message.content)))
 
 async def handle_profile_update(client: bot.DiscordBot, profile: dict):
     ign = profile['ign']
+    message = profile['msg']
     or_message = db[ign]['msg']
     db[ign] = profile
     if or_message.id != profile['msg'].id:
-        await client.control_channel.send("Profile update by {0} from:\n{1}\nto:\n{2}".format(or_message.author.mention, quote_msg(or_message.content), quote_msg(profile['msg'].content)))
-        #await or_message.delete()
+        log.info(f"{or_message.author.name}'s profile update detected {json.dumps(or_message.content)} -> {json.dumps(message.content)}")
+        if config_path("profile.update.old.delete", False):
+            await or_message.delete()
 
 async def handle_duplicate_profile_ign(client: bot.DiscordBot, profile: dict):
+    ign = profile['ign']
     message = profile['msg']
+    or_message = db[ign]['msg']
     user = message.author
-    or_profile = db[profile['ign']]
-    or_user = or_profile['msg'].author
-    log.warn(f"Removing {user.name}'s profile. Reason: duplicate ign. Profile: {str(profile)}, original profile from {or_user.name}: {str(or_profile)}")
-    #await message.delete()
-    #await user.send(FOREIGN_PROFILE_DM_MSG.format(user.name, quote_msg(message.content)))
-    await client.control_channel.send(f"Duplicate ign in {user.mention}'s profile. Provided: {quote_msg(message.content)}, original profile from {or_user.mention}: {quote_msg(or_profile['msg'].content)}")
+    or_user = or_message.author
+    log.warn(f"Duplicate ign detected in {user.name}'s profile: {json.dumps(message.content)}, original profile from {or_user.name}: {json.dumps(or_message.content)}")
+    if config_path("profile.invalid.duplicate.delete", False):
+        await message.delete()
+    if config_path("profile.invalid.duplicate.dm", False):
+        await user.send(FOREIGN_PROFILE_DM_MSG.format(user.name, quote_msg(message.content)))
+
+async def handle_duplicate_deprecated_profile_ign(client: bot.DiscordBot, profile: dict):
+    ign = profile['ign']
+    message = profile['msg']
+    or_message = db[ign]['msg']
+    user = message.author
+    or_user = or_message.author
+    log.warn(f"Duplicate ign detected in deprecated {user.name}'s profile: {json.dumps(message.content)}, original profile from {or_user.name}: {json.dumps(or_message.content)}")
+    if config_path("profile.invalid.duplicate.delete", False):
+        await message.delete()
 
 async def handle_new_profile(clien: bot.DiscordBot, profile: discord.Message):
     db[profile['ign']] = profile
@@ -288,9 +370,11 @@ async def init(client: bot.DiscordBot):
 
         # Filter messages from users not on server
         if not is_user_member(user):
-            log.warn(f'Removing {user.name}\'s profile message as he/she left server')
-            #await message.delete()
-            #await client.control_channel.send("Old profile (user left) by {0}:\n{1}".format(user.name, quote_msg(message.content)))
+            log.info(f'Deprecated {user.name}\'s profile detected: {json.dumps(message.content)}')
+            if config_path("profile.deprecated.delete", False):
+                await message.delete()
+            elif config_path("profile.deprecated.whitelist", False):
+                await handle_deprecated_profile_message(client, message)
             continue
 
         await handle_profile_message(client, message)
@@ -298,7 +382,35 @@ async def init(client: bot.DiscordBot):
 
 async def new_profile(client: bot.DiscordBot, message: discord.Message):
     await handle_profile_message(client, message)
+    
 
+async def edit_profile(client: bot.DiscordBot, before: discord.Message, after: discord.Message):
+    await handle_profile_message(client, after)
+
+async def delete_profile(client: bot.DiscordBot, message: discord.Message):
+    profile = parse_profile(message)
+
+    if profile is None or is_invalid_profile(profile):
+        return
+
+    if profile['ign'] not in db or db[profile['ign']]['msg'].author.id != message.author.id:
+        return
+
+    del db[profile['ign']]
+
+    sync_whitelist()
+
+async def user_left(client: bot.DiscordBot, member: discord.Member):
+    to_delete = []
+    for id in db:
+        profile = db[id]
+        if profile['msg'].author.id == member.id:
+            to_delete.append(id)
+
+    for id in to_delete:
+        del db[id]
+
+    sync_whitelist()
 
 ############################
 # Control command Handlers #
@@ -336,7 +448,7 @@ async def send_to_sink(client: bot.DiscordBot, mgs_obj: discord.Message, sink_na
 
 @bot.cmd
 async def add_persist_profile(client: bot.DiscordBot, mgs_obj: discord.Message, ign: str):
-    profile = persist_profile(mgs_obj, ign)
+    profile = make_persist_profile(mgs_obj, ign)
     if profile is None:
         await mgs_obj.channel.send(f"Invalid ign")
         return

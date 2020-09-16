@@ -101,6 +101,7 @@ class DiscordBot(discord.Client):
         self.sinks = {}
         self.sinks_by_name = {}
         self.commands = {}
+        self.member_hooks = {}
 
     def run(self):
         super().run(self.token)
@@ -184,11 +185,24 @@ class DiscordBot(discord.Client):
             if channel_name == 'control':
                 self.control_channel = channel
                 sink["on_message"] = DiscordBot.on_control_message
+
             if channel_name in config.hooks["message"]:
                 hook = get_module_element(config.hooks["message"][channel_name])
                 if not asyncio.iscoroutinefunction(hook):
                     raise TypeError(f'{hook.__name__}: event registered must be a coroutine function')
                 sink["on_message"] = hook
+                
+            if channel_name in config.hooks["message_edit"]:
+                hook = get_module_element(config.hooks["message_edit"][channel_name])
+                if not asyncio.iscoroutinefunction(hook):
+                    raise TypeError(f'{hook.__name__}: event registered must be a coroutine function')
+                sink["on_message_edit"] = hook
+                
+            if channel_name in config.hooks["message_delete"]:
+                hook = get_module_element(config.hooks["message_delete"][channel_name])
+                if not asyncio.iscoroutinefunction(hook):
+                    raise TypeError(f'{hook.__name__}: event registered must be a coroutine function')
+                sink["on_message_delete"] = hook
 
             log.info(f'Attached to {channel.name} as {channel_name} channel (id: {channel.id}, num:{channel_num})')
 
@@ -198,6 +212,13 @@ class DiscordBot(discord.Client):
             for cmd in control_hooks:
                 hook = get_module_element(control_hooks[cmd])
                 self.commands[cmd] = hook
+
+        if "member" in config.hooks:
+            if "remove" in config.hooks["member"]:
+                hook = get_module_element(config.hooks["member"]["remove"])
+                if not asyncio.iscoroutinefunction(hook):
+                    raise TypeError(f'{hook.__name__}: event registered must be a coroutine function')
+                self.member_hooks["remove"] = hook
         
         if 'init' in config.hooks:
             hook = get_module_element(config.hooks['init'])
@@ -223,6 +244,53 @@ class DiscordBot(discord.Client):
             if "on_message" not in sink:
                 continue
             await sink["on_message"](self, message)
+
+    async def on_message_delete(self, message: discord.Message):
+        # ingore own messages
+        if message.author == self.user:
+            return
+
+        # ingore any foreign messages
+        if is_dm_message(message) or message.guild.id != self.guild.id:
+            return
+
+        sinks = self.get_attached_sinks(message.channel.id)
+
+        if sinks is None:
+            return
+
+        for sink in sinks:
+            if "on_message_delete" not in sink:
+                continue
+            await sink["on_message_delete"](self, message)
+
+    async def on_message_edit(self, before: discord.Message, after: discord.Message):
+        # ingore own messages
+        if before.author == self.user:
+            return
+
+        # ingore any foreign messages
+        if is_dm_message(before) or before.guild.id != self.guild.id:
+            return
+
+        sinks = self.get_attached_sinks(before.channel.id)
+
+        if sinks is None:
+            return
+
+        for sink in sinks:
+            if "on_message_edit" not in sink:
+                continue
+            await sink["on_message_edit"](self, before, after)
+
+    async def on_member_remove(self, member: discord.Member):
+
+        # ingore any foreign members
+        if member.guild.id != self.guild.id:
+            return
+        
+        if 'remove' in self.member_hooks:
+            await self.member_hooks["remove"](self, member)
 
     async def on_control_message(self, message: discord.Message):
         argv = shlex.split(message.content)
