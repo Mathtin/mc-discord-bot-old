@@ -49,9 +49,12 @@ def config_path(path, default):
             return default
     return node
 
-def cmdcoro(func):
+def check_coroutine(func):
     if not asyncio.iscoroutinefunction(func):
-        raise TypeError(f'{func.__name__}: event registered must be a coroutine function')
+        raise NotCoroutineException(func)
+
+def cmdcoro(func):
+    check_coroutine(func)
 
     f_args = func.__code__.co_varnames[:func.__code__.co_argcount]
     assert len(f_args) >= 2
@@ -67,10 +70,6 @@ def cmdcoro(func):
     
     return wrapped_func
 
-def check_coroutine(func):
-    if not asyncio.iscoroutinefunction(func):
-        raise NotCoroutineException(func)
-
 ###################
 # Utility Classes #
 ###################
@@ -79,10 +78,11 @@ class InvalidConfigException(Exception):
 
     def __init__(self, msg, var_name):
         super().__init__(f'{msg}, check {var_name} value in .env file')
+
 class NotCoroutineException(TypeError):
 
     def __init__(self, func):
-        super().__init__(f'{func.__name__} is not a coroutine function')
+        super().__init__(f'{str(func)} is not a coroutine function')
 
 class DiscordBotLogHandler(logging.Handler):
     
