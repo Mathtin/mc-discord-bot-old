@@ -82,18 +82,6 @@ hooks = {
     "init": "manager.init",
 
     "message": {
-        "new": {
-            "profile": "manager.new_profile"
-        },
-        "edit": {
-            "profile": "manager.edit_profile"
-        },
-        "delete": {
-            "profile": "manager.delete_profile"
-        },
-    },
-
-    "message": {
         "profile": {
             "new": "manager.new_profile",
             "edit": "manager.edit_profile",
