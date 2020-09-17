@@ -137,17 +137,17 @@ class DiscordBot(discord.Client):
                 self.control_channel = channel
                 sink["on_message"] = DiscordBot.on_control_message
 
-            if (hook_name := config_path(f"hooks.message.new.{channel_name}", None)) is not None:
+            if (hook_name := config_path(f"hooks.message.{channel_name}.new", None)) is not None:
                 hook = get_module_element(hook_name)
                 check_coroutine(hook)
                 sink["on_message"] = hook
 
-            if (hook_name := config_path(f"hooks.message.edit.{channel_name}", None)) is not None:
+            if (hook_name := config_path(f"hooks.message.{channel_name}.edit", None)) is not None:
                 hook = get_module_element(hook_name)
                 check_coroutine(hook)
                 sink["on_message_edit"] = hook
 
-            if (hook_name := config_path(f"hooks.message.delete.{channel_name}", None)) is not None:
+            if (hook_name := config_path(f"hooks.message.{channel_name}.delete", None)) is not None:
                 hook = get_module_element(hook_name)
                 check_coroutine(hook)
                 sink["on_message_delete"] = hook

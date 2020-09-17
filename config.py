@@ -11,7 +11,7 @@
 #   This file is released under the MIT license.  #
 ###################################################
 
-__author__ = 'Mathtin'
+__author__ = "Mathtin"
 
 import logging.config
 import util
@@ -23,43 +23,43 @@ CONTROL_PREFIX = "!"
 PERSIST_WHITELIST_PATH = "persist_whitelist.json"
 
 LOGGER_CONFIG = { 
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'standard': { 
-            'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": { 
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
         },
     },
-    'handlers': { 
-        'console': { 
-            'level': 'INFO',
-            'formatter': 'standard',
-            'class': 'logging.StreamHandler',
-            'stream': 'ext://sys.stderr',
+    "handlers": { 
+        "console": { 
+            "level": "INFO",
+            "formatter": "standard",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stderr",
         },
-        'file': { 
-            'level': 'INFO',
-            'formatter': 'standard',
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filename': 'mc-discord-bot.log',
-            'maxBytes': 1024 * 1024 * 10,
-            'backupCount': '3'
+        "file": { 
+            "level": "INFO",
+            "formatter": "standard",
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": "mc-discord-bot.log",
+            "maxBytes": 1024 * 1024 * 10,
+            "backupCount": "3"
         },
-        'discord-channel': { 
-            'level': 'WARN',
-            'formatter': 'standard',
-            '()': util.DiscordBotLogHandler,
-            'bot': BOT_NAME
+        "discord-channel": { 
+            "level": "WARN",
+            "formatter": "standard",
+            "()": util.DiscordBotLogHandler,
+            "bot": BOT_NAME
         },
     },
-    'loggers': {
-        'mc-discord-bot': {
-            'handlers': ['console','file', 'discord-channel'],
-            'level': 'INFO'
+    "loggers": {
+        "mc-discord-bot": {
+            "handlers": ["console","file", "discord-channel"],
+            "level": "INFO"
         },
-        'manager-hooks': {
-            'handlers': ['console','file', 'discord-channel'],
-            'level': 'INFO'
+        "manager-hooks": {
+            "handlers": ["console","file", "discord-channel"],
+            "level": "INFO"
         }
     } 
 }
@@ -79,33 +79,41 @@ channels = {
 }
 
 hooks = {
-    "init": 'manager.init',
+    "init": "manager.init",
 
     "message": {
         "new": {
-            "profile": 'manager.new_profile'
+            "profile": "manager.new_profile"
         },
         "edit": {
-            "profile": 'manager.edit_profile'
+            "profile": "manager.edit_profile"
         },
         "delete": {
-            "profile": 'manager.delete_profile'
+            "profile": "manager.delete_profile"
         },
+    },
+
+    "message": {
+        "profile": {
+            "new": "manager.new_profile",
+            "edit": "manager.edit_profile",
+            "delete": "manager.delete_profile"
+        }
     },
 
     "member": {
-        'remove': 'manager.user_left'
+        "remove": "manager.user_left"
     },
 
     "control": {
-        "send": 'manager.send_to_sink',
-        "ping": 'manager.ping',
-        "reload": 'manager.reload',
-        "sync": 'manager.sync',
-        "db": 'manager.show_db',
-        "pdb": 'manager.show_persist_db',
-        "pdb-add": 'manager.add_persist_profile',
-        "pdb-rm": 'manager.remove_persist_profile',
+        "send": "manager.send_to_sink",
+        "ping": "manager.ping",
+        "reload": "manager.reload",
+        "sync": "manager.sync",
+        "db": "manager.show_db",
+        "pdb": "manager.show_persist_db",
+        "pdb-add": "manager.add_persist_profile",
+        "pdb-rm": "manager.remove_persist_profile",
     }
 }
 
