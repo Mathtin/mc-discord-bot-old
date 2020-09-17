@@ -24,6 +24,12 @@ import os
 # Utility Funcs #
 #################
 
+def has_keys(d: dict, keys: list):
+    for key in keys:
+        if key not in d:
+            return False
+    return True
+
 __module_cache = {}
 def get_module_element(path):
     splited_path = path.split('.')
@@ -36,6 +42,20 @@ def get_module_element(path):
 
 def quote_msg(msg):
     return '\n'.join(['> ' + s for s in msg.split('\n')])
+
+def parse_colon_seperated(msg):
+    lines = [s.strip() for s in msg.split('\n')]
+    lines = [s for s in lines if s != ""]
+    res = {}
+    for s in lines:
+        try:
+            k = s[: s.index(':')].strip()
+            v = s[s.index(':')+1:].strip()
+            if k != "":
+                res[k.lower()] = v
+        except ValueError:
+            continue
+    return res
 
 def config_path(path, default):
     path_slitted = path.split('.')
@@ -137,5 +157,8 @@ def get_channel_id(n):
 def is_text_channel(channel):
     return channel.type == discord.ChannelType.text
 
-def is_dm_message(message):
+def is_dm_message(message: discord.Message):
     return isinstance(message.channel, discord.DMChannel)
+
+def is_same_author(m1: discord.Message, m2: discord.Message):
+    return m1.author.id == m2.author.id

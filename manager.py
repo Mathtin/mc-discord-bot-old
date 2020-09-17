@@ -16,7 +16,7 @@ __author__ = 'Mathtin'
 import logging
 import re
 import json
-import tempfile
+import asyncio
 import uuid
 import os
 import os.path
@@ -48,22 +48,6 @@ PTERO_HTTP = 'http://' + PTERO_DOMAIN
 #####################
 
 PROFILE_PATTERN = re.compile(r"^\s*IGN\s*:(.+?)Age\s*:(.+?)Country\s*:(.+?)Playstyle & mods you like\s*:(.+?)Random info\s*:(.+?)$", re.DOTALL + re.IGNORECASE)
-
-DB_LINE_TEMPLATE = """{{
-    "user":      {user}, 
-    "ign":       {ign}, 
-    "uuid":      {uuid},
-    "age":       {age},  
-    "country":   {country},
-    "playstyle": {playstyle},
-    "info":      {info}
-}}"""
-
-PERSIST_DB_LINE_TEMPLATE = """{{
-    "user":      {user}, 
-    "ign":       {ign}, 
-    "uuid":      {uuid}
-}}"""
 
 #####################
 # Message Templates #
@@ -103,7 +87,11 @@ And btw I had to remove it but don't worry. Here is copy of your message:
 # Module globals #
 ##################
 
-db = {}
+dynamic_db = {
+    'valid': {},
+    'invalid': {},
+    'deprecated': {}
+}
 persist_db = {}
 ptero = PterodactylClient(PTERO_HTTP, os.environ.get("PTERODACTYL_TOKEN"))
 
@@ -111,7 +99,7 @@ ptero = PterodactylClient(PTERO_HTTP, os.environ.get("PTERODACTYL_TOKEN"))
 # Profile utility funcs #
 ##########################
 
-def parse_profile(profile_msg: discord.Message):
+def old_parse_profile(profile_msg: discord.Message):
     m = PROFILE_PATTERN.fullmatch(profile_msg.content)
     if m is None:
         return None
@@ -126,14 +114,26 @@ def parse_profile(profile_msg: discord.Message):
         'player': GetPlayerData(ign)
     }
 
-def is_partially_empty_profile(profile: dict):
-    for key in profile:
-        if profile[key] == "":
-            return True
-    return False
+def parse_dynamic_profile(profile_msg: discord.Message):
+    profile = parse_colon_seperated(profile_msg.content)
+    to_filter = config_path("manager.profile.format.filter", [])
+    for key in to_filter:
+        del profile[key]
+    profile["msg"] = profile_msg
+    if 'ign' in profile:
+        profile["player"] = GetPlayerData(profile["ign"])
+    return profile
 
-def is_invalid_profile(profile: dict):
-    return profile is None or is_partially_empty_profile(profile) or not profile['player'].valid
+def is_full_profile(profile: dict):
+    if profile is None:
+        return False
+    required = config_path("manager.profile.format.require", []) + ['ign', 'msg', 'player']
+    if not has_keys(profile, required):
+        return False
+    for key in required:
+        if profile[key] == "":
+            return False
+    return True
 
 def make_persist_profile(message: discord.Message, ign: str):
     player = GetPlayerData(ign)
@@ -149,42 +149,131 @@ def make_persist_profile(message: discord.Message, ign: str):
 # Whitelist DB Methods #
 ########################
 
-def db_row_to_str(row: dict):
-    obj = {
-        'user': json.dumps(row['msg'].author.display_name),
-        'ign': json.dumps(row['player'].username),
-        'uuid': json.dumps(str(row['player'].uuid)),
-        'age': json.dumps(row['age']),
-        'country': json.dumps(row['country']),
-        'playstyle': json.dumps(row['playstyle']),
-        'info': json.dumps(row['info'])
-    }
-    return DB_LINE_TEMPLATE.format(**obj)
+def find_dynamic_profile(id, categories=dynamic_db.keys()):
+    for category in categories:
+        if id in dynamic_db[category]:
+            return dynamic_db[category][id]
+    return None
 
-def persist_db_row_to_str(row: dict):
-    obj = {
-        'user': json.dumps(row['author']),
-        'ign': json.dumps(row['ign']),
-        'uuid': json.dumps(row['uuid'])
+def is_dynamic_profile_exists(id, categories=dynamic_db.keys()):
+    return find_dynamic_profile(id, categories) is not None
+
+def find_whitelisted_dynamic_profile(ign: str):
+    if ign in dynamic_db['valid']:
+        return dynamic_db['valid'][ign]
+    elif config_path("manager.profile.deprecated.whitelist", False):
+        if ign in dynamic_db['deprecated']:
+            return dynamic_db['deprecated'][ign]
+    return None
+
+def add_dynamic_profile(category, profile: dict):
+    if profile is None:
+        return False
+    msg_id = profile['msg'].id
+    if msg_id in dynamic_db[category]:
+        return False
+    if category == 'valid' or category == 'deprecated':
+        ign = profile['ign']
+        if ign in dynamic_db[category]:
+            return False
+        dynamic_db[category][ign] = profile
+    dynamic_db[category][msg_id] = profile
+    return True
+
+def update_dynamic_profile(profile: dict):
+    if profile is None:
+        return False
+    ign = profile['ign']
+    msg_id = profile['msg'].id
+    for category in dynamic_db:
+        if msg_id not in dynamic_db[category]:
+            continue
+        dynamic_db[category][msg_id] = profile
+        if ign in dynamic_db[category]:
+            dynamic_db[category][ign] = profile
+        return True
+    return False
+
+def remove_dynamic_profile(profile: dict):
+    if profile is None:
+        return False
+    ign = profile['ign']
+    msg_id = profile['msg'].id
+    for category in dynamic_db:
+        if msg_id not in dynamic_db[category]:
+            continue
+        del dynamic_db[category][msg_id]
+        if ign in dynamic_db[category]:
+            del dynamic_db[category][ign]
+        return True
+    return False
+
+def dumps_dynamic_profile(row: dict, pretty=False):
+    keys = [k for k in row if k not in ['msg', 'player']]
+    obj = {}
+    for k in keys:
+        obj[k] = row[k]
+    if 'msg' in row:
+        obj['user'] = row['msg'].author.name
+    if 'player' in row and row['player'].valid:
+        obj['ign'] = row['player'].username
+        obj['uuid'] = str(row['player'].uuid)
+    if pretty:
+        return json.dumps(obj, indent=4, sort_keys=True)
+    return json.dumps(obj)
+
+def dumps_presist_profile(row: dict, pretty=False):
+    if pretty:
+        return json.dumps(row, indent=4, sort_keys=True)
+    return json.dumps(row)
+
+def dynamic_row_to_whitelist_row(row):
+    player = row['player']
+    return {
+        'uuid' : str(player.uuid),
+        'name' : player.username
     }
-    return PERSIST_DB_LINE_TEMPLATE.format(**obj)
+
+def persist_row_to_whitelist_row(row):
+    return {
+        'uuid' : row['uuid'],
+        'name' : row['ign']
+    }
 
 def get_whitelist_json():
+    ign_set = set()
     res = []
-    for id in db:
-        player = db[id]['player']
-        res.append ({
-            'uuid' : str(player.uuid),
-            'name' : player.username
-        })
-    for id in persist_db:
-        if id in db:
+
+    # Add valid
+    valid_profiles = dynamic_db['valid']
+    for id in valid_profiles:
+        profile = valid_profiles[id]
+        if profile['ign'] in ign_set:
             continue
-        player = persist_db[id]
-        res.append ({
-            'uuid' : player['uuid'],
-            'name' : player['ign']
-        })
+        wl_row = dynamic_row_to_whitelist_row(profile)
+        res.append(wl_row)
+        ign_set.add(profile['ign'])
+
+    # Add deprecated
+    if config_path("manager.profile.deprecated.whitelist", False):
+        deprecated_profiles = dynamic_db['deprecated']
+        for id in deprecated_profiles:
+            profile = deprecated_profiles[id]
+            if profile['ign'] in ign_set:
+                continue
+            wl_row = dynamic_row_to_whitelist_row(profile)
+            res.append(wl_row)
+            ign_set.add(profile['ign'])
+
+    # Add persist
+    for id in persist_db:
+        profile = persist_db[id]
+        if profile['ign'] in ign_set:
+            continue
+        wl_row = persist_row_to_whitelist_row(profile)
+        res.append(wl_row)
+        ign_set.add(profile['ign'])
+    
     return json.dumps(res)
 
 def save_persist_db():
@@ -202,24 +291,31 @@ def load_persist_db():
             persist_db = {}
             save_persist_db()
 
-#paramiko.common.logging.basicConfig(level=paramiko.common.DEBUG)
 def sync_whitelist():
+    # Dump persist db and whitelist on disk
     save_persist_db()
-    #tmp_file_name = tempfile.mktemp()
     tmp_file_name = "whitelist.json"
     with open(tmp_file_name, "w") as f:
         f.write(get_whitelist_json())
+    
+    # Get servers from pterodactyl panel
     servers = ptero.client.list_servers().data['data']
+    cnopts = pysftp.CnOpts()
+    cnopts.hostkeys = None
+
+    # Sync each server
     for server in servers:
-        cnopts = pysftp.CnOpts()
-        cnopts.hostkeys = None
         srv_id = server['attributes']['identifier']
-        username = f'{os.environ.get("PTERODACTYL_USERNAME")}.{srv_id}'
-        password = os.environ.get("PTERODACTYL_PASSWORD")
-        if config_path("whitelist.upload", False):
+
+        # Upload whitelist.json
+        if config_path("manager.whitelist.upload", False):
+            username = f'{os.environ.get("PTERODACTYL_USERNAME")}.{srv_id}'
+            password = os.environ.get("PTERODACTYL_PASSWORD")
             with pysftp.Connection(PTERO_DOMAIN, username=username, password=password, cnopts=cnopts, port=2022) as sftp:
                 sftp.put(tmp_file_name, "/whitelist.json")
-        if config_path("whitelist.reload", False):
+
+        # Reload whitelist
+        if config_path("manager.whitelist.reload", False):
             ptero.client.send_console_command(srv_id, "whitelist reload")
 
 ####################
@@ -227,104 +323,114 @@ def sync_whitelist():
 ####################
 
 async def handle_profile_message(client: bot.DiscordBot, message: discord.Message):
-    profile = parse_profile(message)
+    profile = parse_dynamic_profile(message)
 
-    if is_invalid_profile(profile):
+    if not is_full_profile(profile):
         if is_admin_message(message):
-            log.info(f'Ignoring message from {message.author.name} as admin\'s message: {message.content}')
+            log.info(f'Ignoring message from {message.author.name} as admin\'s message: {json.dumps(message.content)}')
         else:
             await handle_invalid_profile(client, message, profile)
         return
-
-    ign = profile['ign']
-
-    # If user trying to add profile with duplicate ign
-    if ign in db:
-        if db[ign]['msg'].author.id == message.author.id:
-            await handle_profile_update(client, profile)
-        else:
-            await handle_duplicate_profile_ign(client, profile)
-    else:
-        await handle_new_profile(client, profile)
-
-    sync_whitelist()
-
-async def handle_deprecated_profile_message(client: bot.DiscordBot, message: discord.Message):
-    profile = parse_profile(message)
-
-    if is_invalid_profile(profile):
-        if config_path("profile.invalid.default.delete", False):
-            await message.delete()
+    
+    if not profile['player'].valid:
+        await handle_invalid_profile(client, message, profile)
         return
 
     ign = profile['ign']
+    existing_profile = find_whitelisted_dynamic_profile(ign)
 
     # If user trying to add profile with duplicate ign
-    if ign in db:
-        if db[ign]['msg'].author.id == message.author.id:
-            await handle_profile_update(client, profile)
+    if existing_profile is not None:
+        if is_same_author(existing_profile['msg'], message):
+            await handle_profile_update(client, existing_profile, profile)
         else:
-            await handle_duplicate_deprecated_profile_ign(client, profile)
+            await handle_duplicate_profile_ign(client, existing_profile, profile)
     else:
-        await handle_new_profile(client, profile)
+        add_dynamic_profile('valid', profile)
 
-    sync_whitelist()
+async def handle_deprecated_profile_message(client: bot.DiscordBot, message: discord.Message):
+    profile = parse_dynamic_profile(message)
+
+    if not is_full_profile(profile) or not profile['player'].valid:
+        if config_path("manager.profile.invalid.default.delete", False):
+            await message.delete()
+        else:
+            if not is_full_profile(profile):
+                profile['error'] = "deprecated, missing entries"
+            else:
+                profile['error'] = "deprecated, invalid ign"
+            add_dynamic_profile('invalid', profile)
+        return
+
+    ign = profile['ign']
+    existing_profile = find_whitelisted_dynamic_profile(ign)
+
+    # If user trying to add profile with duplicate ign
+    if existing_profile is not None:
+        if is_same_author(existing_profile['msg'], message):
+            await handle_profile_update(client, existing_profile, profile)
+        else:
+            await handle_duplicate_deprecated_profile_ign(client, existing_profile, profile)
+    else:
+        add_dynamic_profile('deprecated', profile)
 
 async def handle_invalid_profile(client: bot.DiscordBot, message: discord.Message, profile: dict):
     user = message.author
-    if profile is None:
-        log.info(f"Invalid profile by {user.name}: {json.dumps(message.content)}")
-        if config_path("profile.invalid.default.delete", False):
+
+    if not is_full_profile(profile):
+        log.info(f"Invalid profile by {user.name}: {dumps_dynamic_profile(profile)}")
+        if config_path("manager.profile.invalid.default.delete", False):
             await message.delete()
-        if config_path("profile.invalid.default.dm", False):
+        else:
+            profile['error'] = "missing entries"
+            add_dynamic_profile('invalid', profile)
+        if config_path("manager.profile.invalid.default.dm", False):
             await user.send(INVALID_PROFILE_DM_MSG.format(user.name, quote_msg(message.content)))
     elif not profile['player'].valid:
-        log.info(f"Invalid ign by {user.name}: {json.dumps(message.content)}")
-        if config_path("profile.invalid.ign.delete", False):
+        log.info(f"Invalid ign by {user.name}: {dumps_dynamic_profile(profile)}")
+        if config_path("manager.profile.invalid.ign.delete", False):
             await message.delete()
-        if config_path("profile.invalid.ign.dm", False):
+        else:
+            profile['error'] = "invalid ign"
+            add_dynamic_profile('invalid', profile)
+        if config_path("manager.profile.invalid.ign.dm", False):
             await user.send(INVALID_PROFILE_IGN_DM_MSG.format(user.name, quote_msg(message.content)))
     else:
-        log.info(f"Invalid profile by {user.name}: {json.dumps(message.content)}")
-        if config_path("profile.invalid.default.delete", False):
-            await message.delete()
-        if config_path("profile.invalid.default.dm", False):
-            await user.send(INVALID_PROFILE_DM_MSG.format(user.name, quote_msg(message.content)))
+        raise RuntimeError(f"Something went wrong cheking {user.name}'s profile: {dumps_dynamic_profile(profile)}")
 
-async def handle_profile_update(client: bot.DiscordBot, profile: dict):
-    ign = profile['ign']
-    message = profile['msg']
-    or_message = db[ign]['msg']
-    db[ign] = profile
-    if or_message.id != profile['msg'].id:
-        log.info(f"{or_message.author.name}'s profile update detected {json.dumps(or_message.content)} -> {json.dumps(message.content)}")
-        if config_path("profile.update.old.delete", False):
-            await or_message.delete()
+async def handle_profile_update(client: bot.DiscordBot, old_profile: dict, profile: dict):
+    update_dynamic_profile(profile)
+    if old_profile['msg'].id != profile['msg'].id:
+        log.info(f"{profile['msg'].author.name}'s profile update detected {dumps_dynamic_profile(old_profile)} -> {dumps_dynamic_profile(profile)}")
+        if config_path("manager.profile.update.old.delete", False):
+            await old_profile['msg'].delete()
+        else:
+            old_profile['error'] = "old profile"
+            add_dynamic_profile('invalid', old_profile)
 
-async def handle_duplicate_profile_ign(client: bot.DiscordBot, profile: dict):
-    ign = profile['ign']
+async def handle_duplicate_profile_ign(client: bot.DiscordBot, or_profile: dict, profile: dict):
     message = profile['msg']
-    or_message = db[ign]['msg']
     user = message.author
-    or_user = or_message.author
-    log.warn(f"Duplicate ign detected in {user.name}'s profile: {json.dumps(message.content)}, original profile from {or_user.name}: {json.dumps(or_message.content)}")
-    if config_path("profile.invalid.duplicate.delete", False):
+    or_user = or_profile['msg'].author
+    log.warn(f"Duplicate ign detected in {user.name}'s profile: {dumps_dynamic_profile(profile)}, original profile from {or_user.name}: {dumps_dynamic_profile(or_profile)}")
+    if config_path("manager.profile.invalid.duplicate.delete", False):
         await message.delete()
-    if config_path("profile.invalid.duplicate.dm", False):
+    else:
+        profile['error'] = "duplicate ign"
+        add_dynamic_profile('invalid', profile)
+    if config_path("manager.profile.invalid.duplicate.dm", False):
         await user.send(FOREIGN_PROFILE_DM_MSG.format(user.name, quote_msg(message.content)))
 
-async def handle_duplicate_deprecated_profile_ign(client: bot.DiscordBot, profile: dict):
-    ign = profile['ign']
+async def handle_duplicate_deprecated_profile_ign(client: bot.DiscordBot, or_profile: dict, profile: dict):
     message = profile['msg']
-    or_message = db[ign]['msg']
     user = message.author
-    or_user = or_message.author
-    log.warn(f"Duplicate ign detected in deprecated {user.name}'s profile: {json.dumps(message.content)}, original profile from {or_user.name}: {json.dumps(or_message.content)}")
-    if config_path("profile.invalid.duplicate.delete", False):
+    or_user = or_profile['msg'].author
+    log.warn(f"Duplicate ign detected in deprecated {user.name}'s profile: {dumps_dynamic_profile(profile)}, original profile from {or_user.name}: {dumps_dynamic_profile(or_profile)}")
+    if config_path("manager.profile.invalid.duplicate.delete", False):
         await message.delete()
-
-async def handle_new_profile(clien: bot.DiscordBot, profile: discord.Message):
-    db[profile['ign']] = profile
+    else:
+        profile['error'] = "duplicate ign"
+        add_dynamic_profile('invalid', profile)
 
 ##################
 # Event Handlers #
@@ -333,55 +439,45 @@ async def handle_new_profile(clien: bot.DiscordBot, profile: discord.Message):
 async def init(client: bot.DiscordBot):
     load_persist_db()
     profile_channel = client.get_attached_sink("profile")["channel"]
-    async for message in profile_channel.history(limit=None,oldest_first=True):
-        user = message.author
+    init_lock = asyncio.Lock()
+    async with init_lock:
+        messages_history = await profile_channel.history(limit=None,oldest_first=True).flatten()
+        for message in messages_history:
+            user = message.author
 
-        if user == client.user:
-            continue
+            if user == client.user:
+                continue
 
-        # Filter messages from users not on server
-        if not is_user_member(user):
-            log.info(f'Deprecated {user.name}\'s profile detected: {json.dumps(message.content)}')
-            if config_path("profile.deprecated.delete", False):
-                await message.delete()
-            elif config_path("profile.deprecated.whitelist", False):
-                await handle_deprecated_profile_message(client, message)
-            continue
+            # Filter messages from users not on server
+            if not is_user_member(user):
+                log.info(f'Deprecated {user.name}\'s profile detected: {json.dumps(message.content)}')
+                if config_path("manager.profile.deprecated.delete", False):
+                    await message.delete()
+                else:
+                    await handle_deprecated_profile_message(client, message)
+                continue
 
-        await handle_profile_message(client, message)
-    
+            await handle_profile_message(client, message)
+        sync_whitelist()
 
 async def new_profile(client: bot.DiscordBot, message: discord.Message):
     await handle_profile_message(client, message)
-    
+    sync_whitelist()
 
 async def edit_profile(client: bot.DiscordBot, before: discord.Message, after: discord.Message):
+    profile = find_dynamic_profile(before.id)
+    remove_dynamic_profile(profile)
     await handle_profile_message(client, after)
+    sync_whitelist()
 
 async def delete_profile(client: bot.DiscordBot, message: discord.Message):
-    profile = parse_profile(message)
-
-    if profile is None or is_invalid_profile(profile):
-        return
-
-    if profile['ign'] not in db or db[profile['ign']]['msg'].author.id != message.author.id:
-        return
-
-    del db[profile['ign']]
-
+    profile = find_dynamic_profile(message.id)
+    remove_dynamic_profile(profile)
     sync_whitelist()
 
 async def user_left(client: bot.DiscordBot, member: discord.Member):
-    to_delete = []
-    for id in db:
-        profile = db[id]
-        if profile['msg'].author.id == member.id:
-            to_delete.append(id)
-
-    for id in to_delete:
-        del db[id]
-
-    sync_whitelist()
+    log.warn(f"User {member.name} left server, reloading data")
+    await init(client)
 
 ############################
 # Control command Handlers #
@@ -392,20 +488,33 @@ async def ping(client: bot.DiscordBot, mgs_obj: discord.Message):
     await mgs_obj.channel.send("pong")
 
 @cmdcoro
-async def show_db(client: bot.DiscordBot, mgs_obj: discord.Message):
+async def show_db(client: bot.DiscordBot, mgs_obj: discord.Message, name: str):
+    if name not in dynamic_db:
+        await mgs_obj.channel.send("No such database")
+        return
+    db = dynamic_db[name]
     if not db:
         await mgs_obj.channel.send("Database is empty")
+        return
+    await mgs_obj.channel.send("##### DATABASE START #####")
     for id in db:
-        row_str = '`' + db_row_to_str(db[id]).replace('`', '\'') + '`'
+        profile = db[id]
+        if 'ign' in profile and profile['ign'] == id:
+            continue
+        row_str = '`' + dumps_dynamic_profile(profile, pretty=True).replace('`', '\'') + '`'
         await mgs_obj.channel.send(row_str)
+    await mgs_obj.channel.send("##### DATABASE END #####")
 
 @cmdcoro
 async def show_persist_db(client: bot.DiscordBot, mgs_obj: discord.Message):
     if not persist_db:
         await mgs_obj.channel.send("Database is empty")
+        return
+    await mgs_obj.channel.send("##### DATABASE START #####")
     for id in persist_db:
-        row_str = '`' + persist_db_row_to_str(persist_db[id]).replace('`', '\'') + '`'
+        row_str = '`' + dumps_presist_profile(persist_db[id], pretty=True).replace('`', '\'') + '`'
         await mgs_obj.channel.send(row_str)
+    await mgs_obj.channel.send("##### DATABASE END #####")
 
 @cmdcoro
 async def send_to_sink(client: bot.DiscordBot, mgs_obj: discord.Message, sink_name: str, message: str):
@@ -427,8 +536,9 @@ async def add_persist_profile(client: bot.DiscordBot, mgs_obj: discord.Message, 
         or_profile = persist_db[ign]
         await mgs_obj.channel.send(f"This ign is already added by {or_profile['author']}")
         return
-    if ign in db:
-        or_msg = db[ign]['msg']
+    existing_profile = find_whitelisted_dynamic_profile(ign)
+    if existing_profile is not None:
+        or_msg = existing_profile['msg']
         await mgs_obj.channel.send(f"Note: profile with specified ign is exists (by {or_msg.author.mention})")
     persist_db[ign] = profile
     sync_whitelist()
@@ -439,8 +549,9 @@ async def remove_persist_profile(client: bot.DiscordBot, mgs_obj: discord.Messag
     if ign not in persist_db:
         await mgs_obj.channel.send(f"Specified ign not added yet")
         return
-    if ign in db:
-        or_msg = db[ign]['msg']
+    existing_profile = find_whitelisted_dynamic_profile(ign)
+    if existing_profile is not None:
+        or_msg = existing_profile['msg']
         await mgs_obj.channel.send(f"Note: profile with specified ign is exists (by {or_msg.author.mention})")
     del persist_db[ign]
     sync_whitelist()
@@ -451,3 +562,9 @@ async def reload(client: bot.DiscordBot, mgs_obj: discord.Message):
     await mgs_obj.channel.send(f"Reloading")
     await init(client)
     await mgs_obj.channel.send(f"Reloaded data successfully")
+
+@cmdcoro
+async def sync(client: bot.DiscordBot, mgs_obj: discord.Message):
+    await mgs_obj.channel.send(f"Syncing whitelist")
+    sync_whitelist()
+    await mgs_obj.channel.send(f"Synced successfully")

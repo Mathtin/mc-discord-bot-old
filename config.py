@@ -69,8 +69,8 @@ channels = {
     # Special
 
     # "log": 0,
-    "error": 2,
-    "control": 2,
+    "error": 0,
+    "control": 1,
 
 
     # User defined
@@ -101,6 +101,7 @@ hooks = {
         "send": 'manager.send_to_sink',
         "ping": 'manager.ping',
         "reload": 'manager.reload',
+        "sync": 'manager.sync',
         "db": 'manager.show_db',
         "pdb": 'manager.show_persist_db',
         "pdb-add": 'manager.add_persist_profile',
@@ -114,8 +115,8 @@ roles = {
 
 manager = {
     "whitelist": {
-        "upload": False,
-        "reload": False,
+        "upload": True,
+        "reload": True,
     },
 
     "profile": {
@@ -141,6 +142,10 @@ manager = {
         "deprecated": {
             "delete": False,
             "whitelist": False
+        },
+        "format": {
+            "require": ["age", "country"],
+            "filter": []
         }
     }
 }
