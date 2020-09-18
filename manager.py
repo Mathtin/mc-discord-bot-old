@@ -145,15 +145,40 @@ def make_persist_profile(message: discord.Message, ign: str):
         'uuid': str(player.uuid)
     }
 
+def get_missing_entries(profile: dict):
+    required = config_path("manager.profile.format.require", []) + ['ign']
+    required = list(set(required))
+    required = [e for e in required if e not in profile]
+    return required
+    
+
 ########################
 # Whitelist DB Methods #
 ########################
+
+def clear_dynamic_profiles():
+    global dynamic_db
+    dynamic_db = {
+        'valid': {},
+        'invalid': {},
+        'deprecated': {}
+    }
 
 def find_dynamic_profile(id, categories=dynamic_db.keys()):
     for category in categories:
         if id in dynamic_db[category]:
             return dynamic_db[category][id]
     return None
+
+def find_dynamic_profile_by_name(name, categories=dynamic_db.keys()):
+    res = []
+    for category in categories:
+        for id in dynamic_db[category]:
+            profile = dynamic_db[category][id]
+            user = profile['msg'].author
+            if user.name == name or user.display_name == name:
+                res.append(profile)
+    return res
 
 def is_dynamic_profile_exists(id, categories=dynamic_db.keys()):
     return find_dynamic_profile(id, categories) is not None
@@ -356,7 +381,9 @@ async def handle_deprecated_profile_message(client: bot.DiscordBot, message: dis
             await message.delete()
         else:
             if not is_full_profile(profile):
-                profile['error'] = "deprecated, missing entries"
+                required = get_missing_entries(profile)
+                required_str = ', '.join([str(s) for s in required])
+                profile['error'] = f"deprecated, missing entries: {required_str}"
             else:
                 profile['error'] = "deprecated, invalid ign"
             add_dynamic_profile('invalid', profile)
@@ -382,7 +409,9 @@ async def handle_invalid_profile(client: bot.DiscordBot, message: discord.Messag
         if config_path("manager.profile.invalid.default.delete", False):
             await message.delete()
         else:
-            profile['error'] = "missing entries"
+            required = get_missing_entries(profile)
+            required_str = ', '.join([str(s) for s in required])
+            profile['error'] = f"missing entries: {required_str}"
             add_dynamic_profile('invalid', profile)
         if config_path("manager.profile.invalid.default.dm", False):
             await user.send(INVALID_PROFILE_DM_MSG.format(user.name, quote_msg(message.content)))
@@ -399,9 +428,10 @@ async def handle_invalid_profile(client: bot.DiscordBot, message: discord.Messag
         raise RuntimeError(f"Something went wrong cheking {user.name}'s profile: {dumps_dynamic_profile(profile)}")
 
 async def handle_profile_update(client: bot.DiscordBot, old_profile: dict, profile: dict):
-    update_dynamic_profile(profile)
+    log.info(f"{profile['msg'].author.name}'s profile update detected {dumps_dynamic_profile(old_profile)} -> {dumps_dynamic_profile(profile)}")
+    remove_dynamic_profile(old_profile)
+    add_dynamic_profile('valid', profile)
     if old_profile['msg'].id != profile['msg'].id:
-        log.info(f"{profile['msg'].author.name}'s profile update detected {dumps_dynamic_profile(old_profile)} -> {dumps_dynamic_profile(profile)}")
         if config_path("manager.profile.update.old.delete", False):
             await old_profile['msg'].delete()
         else:
@@ -437,6 +467,7 @@ async def handle_duplicate_deprecated_profile_ign(client: bot.DiscordBot, or_pro
 ##################
 
 async def init(client: bot.DiscordBot):
+    clear_dynamic_profiles()
     load_persist_db()
     profile_channel = client.get_attached_sink("profile")["channel"]
     init_lock = asyncio.Lock()
@@ -568,3 +599,17 @@ async def sync(client: bot.DiscordBot, mgs_obj: discord.Message):
     await mgs_obj.channel.send(f"Syncing whitelist")
     sync_whitelist()
     await mgs_obj.channel.send(f"Synced successfully")
+
+@cmdcoro
+async def get_profile(client: bot.DiscordBot, mgs_obj: discord.Message, name: str):
+    profiles = find_dynamic_profile_by_name(name)
+    if len(profiles) == 0:
+        await mgs_obj.channel.send(f"No such user in database")
+        return
+
+    await mgs_obj.channel.send("##### SEARCH START #####")
+    for profile in profiles:
+        row_str = '`' + dumps_dynamic_profile(profile, pretty=True).replace('`', '\'') + '`'
+        await mgs_obj.channel.send(row_str)
+    await mgs_obj.channel.send("##### SEARCH END #####")
+

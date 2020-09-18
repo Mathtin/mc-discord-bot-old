@@ -238,11 +238,12 @@ class DiscordBot(discord.Client):
             await self.member_hooks["remove"](self, member)
 
     async def on_control_message(self, message: discord.Message):
-        argv = shlex.split(message.content)
+        msg = message.content.strip()
         ctrl_prefx_len = len(config.CONTROL_PREFIX)
-        if len(argv) == 0 or argv[0][: ctrl_prefx_len] != config.CONTROL_PREFIX:
+        if len(msg) == 0 or msg[: ctrl_prefx_len] != config.CONTROL_PREFIX:
             return
 
+        argv = shlex.split(message.content)
         cmd_name = argv[0][ctrl_prefx_len:]
         if cmd_name == "":
             return

@@ -102,6 +102,7 @@ hooks = {
         "pdb": "manager.show_persist_db",
         "pdb-add": "manager.add_persist_profile",
         "pdb-rm": "manager.remove_persist_profile",
+        "profile": "manager.get_profile",
     }
 }
 
@@ -111,8 +112,8 @@ roles = {
 
 manager = {
     "whitelist": {
-        "upload": True,
-        "reload": True,
+        "upload": False,
+        "reload": False,
     },
 
     "profile": {
