@@ -59,25 +59,25 @@ Country: USA
 Playstyle & mods you like: building with oak planks
 Random info: I'm not even exisiting! I'm just example! Don't blame me please"""
 
-INVALID_PROFILE_DM_MSG = """Hi {0}, you left your profile on ECC server but unfortunately it doesn\'t match specified pattern :(
+INVALID_PROFILE_DM_MSG = """Hi {0}, you left your profile on ECc server but unfortunately it doesn\'t match specified pattern :(
 
 Please, follow this example:
 """ + quote_msg(PROFILE_EXAMPLE) + """
 
-And btw I had to remove it but do not worry. Here is copy of your message:
+The profile has been remove but don't worry. Here is copy of your message:
 {1}
 """
 
-INVALID_PROFILE_IGN_DM_MSG = """Hi {0}, you left your profile on ECC server but unfortunately you specified invalid IGN :(
+INVALID_PROFILE_IGN_DM_MSG = """Hi {0}, you left your profile on ECc server but unfortunately you specified invalid IGN :(
 Please, check your IGN.
 
-And btw I had to remove it but do not worry. Here is copy of your message:
+The profile has been remove but don't worry. Here is copy of your message:
 {1}
 """
 
-FOREIGN_PROFILE_DM_MSG = """Hi {0}, you left your profile on ECC server but unfortunately you mentioned someone else's ign :(
+FOREIGN_PROFILE_DM_MSG = """Hi {0}, you left your profile on ECc server but unfortunately you mentioned someone else's ign :(
 
-If you believe it isn't your mistake (someone took your ign), please contact anyone on ECC server with this roles: """ + ', '.join(config.roles["admin"]) + """.
+If you believe it isn't your mistake (someone took your ign), please contact anyone on ECc server with this roles: """ + ', '.join(config.roles["admin"]) + """.
 
 And btw I had to remove it but don't worry. Here is copy of your message:
 {1}
