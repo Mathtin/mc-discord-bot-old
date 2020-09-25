@@ -64,14 +64,14 @@ INVALID_PROFILE_DM_MSG = """Hi {0}, you left your profile on ECc server but unfo
 Please, follow this example:
 """ + quote_msg(PROFILE_EXAMPLE) + """
 
-The profile has been remove but don't worry. Here is copy of your message:
+The profile has been removed but don't worry. Here is copy of your message:
 {1}
 """
 
 INVALID_PROFILE_IGN_DM_MSG = """Hi {0}, you left your profile on ECc server but unfortunately you specified invalid IGN :(
 Please, check your IGN.
 
-The profile has been remove but don't worry. Here is copy of your message:
+The profile has been removed but don't worry. Here is copy of your message:
 {1}
 """
 
@@ -79,7 +79,7 @@ FOREIGN_PROFILE_DM_MSG = """Hi {0}, you left your profile on ECc server but unfo
 
 If you believe it isn't your mistake (someone took your ign), please contact anyone on ECc server with this roles: """ + ', '.join(config.roles["admin"]) + """.
 
-And btw I had to remove it but don't worry. Here is copy of your message:
+The profile has been removed but don't worry. Here is copy of your message:
 {1}
 """
 
