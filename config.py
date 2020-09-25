@@ -22,6 +22,8 @@ CONTROL_PREFIX = "!"
 
 PERSIST_WHITELIST_PATH = "persist_whitelist.json"
 
+EGG_DONE_MESSAGE = 'change this part'
+
 LOGGER_CONFIG = { 
     "version": 1,
     "disable_existing_loggers": False,

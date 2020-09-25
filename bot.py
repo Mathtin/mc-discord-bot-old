@@ -170,6 +170,8 @@ class DiscordBot(discord.Client):
             hook = get_module_element(hook_name)
             check_coroutine(hook)
             await hook(self)
+        
+        print(config_path(f"EGG_DONE_MESSAGE", "bot initialized successfully"))
 
     async def on_message(self, message: discord.Message):
         # ingore own messages
