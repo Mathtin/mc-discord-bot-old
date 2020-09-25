@@ -116,6 +116,7 @@ manager = {
     "whitelist": {
         "upload": False,
         "reload": False,
+        "servers": ["988a3538", "46b6098c", "b3fe25a3"]
     },
 
     "profile": {

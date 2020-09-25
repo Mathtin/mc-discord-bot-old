@@ -332,6 +332,9 @@ def sync_whitelist():
     for server in servers:
         srv_id = server['attributes']['identifier']
 
+        if srv_id not in config_path("manager.whitelist.servers", []):
+            continue
+
         # Upload whitelist.json
         if config_path("manager.whitelist.upload", False):
             username = f'{os.environ.get("PTERODACTYL_USERNAME")}.{srv_id}'
