@@ -6,6 +6,7 @@ __pycache__/
 .vscode
 whitelist.json
 persist_whitelist.json
+config.py
 
 # C extensions
 *.so
