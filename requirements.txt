@@ -1,5 +1,5 @@
-pydactyl = 0.1.13
-discord.py
+pydactyl == 0.5
+discord.py == 1.5.0
 python-dotenv
 py-dactyl
 paramiko
