@@ -123,12 +123,6 @@ def ptero_sftp_upload(srv_id, src_path, dst_path):
     with pysftp.Connection(domain, username=username, password=password, cnopts=cnopts, port=2022) as sftp:
         sftp.put(src_path, dst_path)
 
-def ptero_ftbutilities_rank_sync(db):
-    pass
-
-def ptero_spigot_rank_sync(db):
-    pass
-
 ###################
 # Utility Classes #
 ###################

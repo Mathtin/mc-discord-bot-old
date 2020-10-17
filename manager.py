@@ -253,9 +253,47 @@ def sync_ranks():
         rank_system = rank_systems[srv_id]
 
         if rank_system == "spigot":
-            ptero_spigot_rank_sync(DB.ranks)
+            ptero_spigot_rank_sync(srv_id)
         elif rank_system == "ftbutilities":
-            ptero_ftbutilities_rank_sync(DB.ranks)
+            ptero_ftbutilities_rank_sync(srv_id)
+
+def build_ftbu_ranks_data():
+    entries = {}
+
+    for table in DB.ranks:
+        for row in table:
+            ign = row['ign']
+            if ign in entries:
+                entries[ign]['ranks'].append(table.name)
+            else:
+                entries[ign] = {
+                    'ign': row['ign'],
+                    'uuid': row['uuid'].replace('-',''),
+                    'ranks': [table.name]
+                }
+    
+    entrie_format = '// {ign}\n[{uuid}]\nparent: {ranks}\n'
+    entrie_conv = lambda e: {'ign': e['ign'], 'uuid': e['uuid'], 'ranks': ', '.join(e['ranks'])}
+
+    converted_entries = [entrie_conv(entries[ign]) for ign in entries]
+    formated_entries = [entrie_format.format(**e) for e in converted_entries]
+
+    return '\n'.join(formated_entries)
+
+
+def ptero_ftbutilities_rank_sync(srv_id):
+
+    # Dump players.txt
+    tmp_file_name = "player_ftbu_ranks.txt"
+    with open(tmp_file_name, "w") as f:
+        f.write(build_ftbu_ranks_data())
+    
+    # Upload players.txt
+    if config_path("manager.rank.upload", False):
+        ptero_sftp_upload(srv_id, tmp_file_name, "/local/ftbutilities/players.txt")
+
+def ptero_spigot_rank_sync(srv_id):
+    pass
 
 ####################
 # Profile Handlers #
@@ -610,12 +648,20 @@ async def add_rank(client: bot.DiscordBot, mgs_obj: discord.Message, ign: str, r
         await mgs_obj.channel.send(f"This ign is already ranked as {rank} by <@{or_profile['author']}>")
         return
 
+    # Find and convert profile
+    profile = DB.find_dynamic_whitelisted(ign)
+    if profile is None:
+        profile = persist_profile_to_whitelist_row(DB.persist.root.ign[ign][0]) \
+                    if ign in DB.persist.root.ign else None
+    else:
+        profile = dynamic_profile_to_whitelist_row(profile)
+
     # Handle absent profile
-    if ign not in DB.persist.root.ign and DB.find_dynamic_whitelisted(ign) is None:
+    if profile is None:
         await mgs_obj.channel.send(f"No profile found for specified ign")
         return
 
-    table.add({'ign': ign, 'author': mgs_obj.author.id})
+    table.add({'ign': ign, 'author': mgs_obj.author.id, 'uuid': profile['uuid']})
     sync_ranks()
     await mgs_obj.channel.send(f"Ranked {ign} as {rank} successfully")
 
