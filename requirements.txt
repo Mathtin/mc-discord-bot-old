@@ -1,4 +1,4 @@
-pydactyl
+pydactyl = 0.1.13
 discord.py
 python-dotenv
 py-dactyl

@@ -18,10 +18,6 @@ import util
 
 BOT_NAME = "MC Manager"
 
-CONTROL_PREFIX = "!"
-
-PERSIST_WHITELIST_PATH = "persist_whitelist.json"
-
 EGG_DONE_MESSAGE = 'change this part'
 
 LOGGER_CONFIG = { 
@@ -62,6 +58,10 @@ LOGGER_CONFIG = {
         "manager-hooks": {
             "handlers": ["console","file", "discord-channel"],
             "level": "INFO"
+        },
+        "database": {
+            "handlers": ["console","file", "discord-channel"],
+            "level": "INFO"
         }
     } 
 }
@@ -77,7 +77,7 @@ channels = {
 
     # User defined
 
-    "profile": 2
+    "profile": 1
 }
 
 hooks = {
@@ -96,15 +96,23 @@ hooks = {
     },
 
     "control": {
-        "send": "manager.send_to_sink",
-        "ping": "manager.ping",
-        "reload": "manager.reload",
-        "sync": "manager.sync",
-        "db": "manager.show_db",
-        "pdb": "manager.show_persist_db",
-        "pdb-add": "manager.add_persist_profile",
-        "pdb-rm": "manager.remove_persist_profile",
-        "profile": "manager.get_profile",
+        "prefix": "!",
+        "commands": {
+            "send": "manager.send_to_sink",
+            "ping": "manager.ping",
+            "reload": "manager.reload",
+            "sync": "manager.sync",
+            "db": "manager.show_db",
+            "pdb": "manager.show_persist_db",
+            "pdb-add": "manager.add_persist_profile",
+            "pdb-rm": "manager.remove_persist_profile",
+            "profile": "manager.get_profile",
+            "rank-add": "manager.add_rank",
+            "rank-rm": "manager.remove_rank",
+            "rank-get": "manager.get_rank",
+            "rank": "manager.show_ranked_users",
+            "ranks": "manager.show_ranks"
+        }
     }
 }
 
@@ -116,7 +124,16 @@ manager = {
     "whitelist": {
         "upload": False,
         "reload": False,
-        "servers": ["988a3538", "46b6098c", "b3fe25a3"]
+        "servers": ["00000000", "00000001"]
+    },
+
+    "rank": {
+        "upload": False,
+        "reload": False,
+        "servers": {
+            "00000000": "spigot",
+            "00000001": "ftbutilities"
+        }
     },
 
     "profile": {
@@ -146,6 +163,32 @@ manager = {
         "format": {
             "require": ["age", "country"],
             "filter": []
+        }
+    }
+}
+
+db = {
+    "persist": {
+        "path": "persist_whitelist.json",
+        "tables": ["root"],
+        "indexes": {
+            "root": ["ign"]
+        }
+    },
+    "dynamic": {
+        "tables": ["valid", "invalid", "deprecated"],
+        "indexes": {
+            "valid": ["msg_id", "ign"],
+            "invalid": ["msg_id"],
+            "deprecated": ["msg_id", "ign"]
+        }
+    },
+    "ranks": {
+        "path": "ranks.json",
+        "tables": ["admin", "supporter"],
+        "indexes": {
+            "admin": ["ign"],
+            "supporter": ["ign"]
         }
     }
 }

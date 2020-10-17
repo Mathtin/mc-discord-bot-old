@@ -17,7 +17,6 @@ import os
 import sys
 import traceback
 import logging
-import shlex
 import discord
 import config
 
@@ -31,7 +30,12 @@ log = logging.getLogger('mc-discord-bot')
 class DiscordBot(discord.Client):
 
     def __init__(self):
-        super().__init__()
+        intents = discord.Intents.none()
+        intents.guilds = True
+        intents.members = True
+        intents.messages = True
+
+        super().__init__(intents=intents)
 
         self.alias = config.BOT_NAME
         DiscordBotLogHandler.connect_client(self)
@@ -155,7 +159,7 @@ class DiscordBot(discord.Client):
             log.info(f'Attached to {channel.name} as {channel_name} channel (id: {channel.id}, num:{channel_num})')
 
         # Attach control hooks
-        control_hooks = config_path("hooks.control", {})
+        control_hooks = config_path("hooks.control.commands", {})
         for cmd in control_hooks:
             hook = get_module_element(control_hooks[cmd])
             check_coroutine(hook)
@@ -192,43 +196,33 @@ class DiscordBot(discord.Client):
                 continue
             await sink["on_message"](self, message)
 
-    async def on_message_delete(self, message: discord.Message):
+    async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent):
+        sinks = self.get_attached_sinks(payload.channel_id)
+        if sinks is None:
+            return
+
+        channel = self.get_channel(payload.channel_id)
+
+        msg = await channel.fetch_message(payload.message_id)
+
         # ingore own messages
-        if message.author == self.user:
+        if msg.author.id == self.user.id:
             return
 
-        # ingore any foreign messages
-        if is_dm_message(message) or message.guild.id != self.guild.id:
-            return
+        for sink in sinks:
+            if "on_message_edit" not in sink:
+                continue
+            await sink["on_message_edit"](self, msg)
 
-        sinks = self.get_attached_sinks(message.channel.id)
-
+    async def on_raw_message_delete(self, payload: discord.RawMessageUpdateEvent):
+        sinks = self.get_attached_sinks(payload.channel_id)
         if sinks is None:
             return
 
         for sink in sinks:
             if "on_message_delete" not in sink:
                 continue
-            await sink["on_message_delete"](self, message)
-
-    async def on_message_edit(self, before: discord.Message, after: discord.Message):
-        # ingore own messages
-        if before.author == self.user:
-            return
-
-        # ingore any foreign messages
-        if is_dm_message(before) or before.guild.id != self.guild.id:
-            return
-
-        sinks = self.get_attached_sinks(before.channel.id)
-
-        if sinks is None:
-            return
-
-        for sink in sinks:
-            if "on_message_edit" not in sink:
-                continue
-            await sink["on_message_edit"](self, before, after)
+            await sink["on_message_delete"](self, payload.message_id)
 
     async def on_member_remove(self, member: discord.Member):
 
@@ -240,15 +234,22 @@ class DiscordBot(discord.Client):
             await self.member_hooks["remove"](self, member)
 
     async def on_control_message(self, message: discord.Message):
-        msg = message.content.strip()
-        ctrl_prefx_len = len(config.CONTROL_PREFIX)
-        if len(msg) == 0 or msg[: ctrl_prefx_len] != config.CONTROL_PREFIX:
+        argv = parse_control_message(message)
+
+        if argv is None or len(argv) == 0:
+            return
+            
+        cmd_name = argv[0]
+
+        if cmd_name == "help":
+            help_lines = []
+            for cmd in self.commands:
+                hook = self.commands[cmd]
+                help_lines.append(build_cmdcoro_usage(cmd, hook.or_cmdcoro))
+            help_msg = '\n'.join(help_lines)
+            await message.channel.send(f'Available commands:\n`######------######\n{help_msg}\n######------######`')
             return
 
-        argv = shlex.split(message.content)
-        cmd_name = argv[0][ctrl_prefx_len:]
-        if cmd_name == "":
-            return
         if cmd_name not in self.commands:
             await message.channel.send("Unknown command")
             return

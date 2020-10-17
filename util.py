@@ -18,6 +18,8 @@ import importlib
 import config
 import asyncio
 import discord
+import pysftp
+import shlex
 import os
 
 #################
@@ -31,7 +33,7 @@ def has_keys(d: dict, keys: list):
     return True
 
 __module_cache = {}
-def get_module_element(path):
+def get_module_element(path: str):
     splited_path = path.split('.')
     module_name = '.'.join(splited_path[:-1])
     object_name = splited_path[-1]
@@ -40,10 +42,10 @@ def get_module_element(path):
     module = __module_cache[module_name]
     return getattr(module, object_name)
 
-def quote_msg(msg):
+def quote_msg(msg: str):
     return '\n'.join(['> ' + s for s in msg.split('\n')])
 
-def parse_colon_seperated(msg):
+def parse_colon_seperated(msg: str):
     lines = [s.strip() for s in msg.split('\n')]
     lines = [s for s in lines if s != ""]
     res = {}
@@ -57,7 +59,7 @@ def parse_colon_seperated(msg):
             continue
     return res
 
-def config_path(path, default):
+def config_path(path: str, default):
     path_slitted = path.split('.')
     if not hasattr(config, path_slitted[0]):
         return default
@@ -69,9 +71,30 @@ def config_path(path, default):
             return default
     return node
 
+def parse_control_message(message: discord.Message):
+        prefix = config_path("hooks.control.prefix", '!')
+        prefix_len = len(prefix)
+        msg = message.content.strip()
+
+        msg_prefix = msg[: prefix_len]
+        msg_suffix = msg[prefix_len :]
+
+        if msg_prefix != prefix or msg_suffix == "":
+            return None
+
+        return shlex.split(msg_suffix)
+
 def check_coroutine(func):
     if not asyncio.iscoroutinefunction(func):
         raise NotCoroutineException(func)
+
+def build_cmdcoro_usage(cmdname, func):
+    prefix = config_path("hooks.control.prefix", '!')
+    f_args = func.__code__.co_varnames[:func.__code__.co_argcount]
+    assert len(f_args) >= 2
+    f_args = f_args[2:]
+    args_str = ' ' + ' '.join(["{%s}" % arg for arg in f_args])
+    return f'{prefix}{cmdname}' + args_str
 
 def cmdcoro(func):
     check_coroutine(func)
@@ -82,13 +105,29 @@ def cmdcoro(func):
 
     async def wrapped_func(client, message, argv):
         if len(f_args) != len(argv) - 1:
-            args_str = ' ' + ' '.join(["{%s}" % arg for arg in f_args])
-            usage_str = f'Usage: {argv[0]}' + args_str
+            usage_str = 'Usage: ' + build_cmdcoro_usage(argv[0], func)
             await message.channel.send(usage_str)
         else:
             await func(client, message, *argv[1:])
+
+    setattr(wrapped_func, "or_cmdcoro", func)
     
     return wrapped_func
+
+def ptero_sftp_upload(srv_id, src_path, dst_path):
+    username = f'{os.environ.get("PTERODACTYL_USERNAME")}.{srv_id}'
+    password = os.environ.get("PTERODACTYL_PASSWORD")
+    domain = os.environ.get("PTERODACTYL_DOMAIN")
+    cnopts = pysftp.CnOpts()
+    cnopts.hostkeys = None
+    with pysftp.Connection(domain, username=username, password=password, cnopts=cnopts, port=2022) as sftp:
+        sftp.put(src_path, dst_path)
+
+def ptero_ftbutilities_rank_sync(db):
+    pass
+
+def ptero_spigot_rank_sync(db):
+    pass
 
 ###################
 # Utility Classes #
@@ -96,7 +135,7 @@ def cmdcoro(func):
 
 class InvalidConfigException(Exception):
 
-    def __init__(self, msg, var_name):
+    def __init__(self, msg: str, var_name: str):
         super().__init__(f'{msg}, check {var_name} value in .env file')
 
 class NotCoroutineException(TypeError):
