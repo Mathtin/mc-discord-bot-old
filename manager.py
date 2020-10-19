@@ -447,8 +447,11 @@ async def init(client: bot.DiscordBot):
 
             # Get user-member object
             if user.id not in member_cache:
-                member = await client.guild.fetch_member(user.id)
-                if member is None:
+                try:
+                    member = await client.guild.fetch_member(user.id)
+                    if member is None:
+                        member = user
+                except discord.errors.NotFound:
                     member = user
                 member_cache[user.id] = member
             user = member_cache[user.id]
