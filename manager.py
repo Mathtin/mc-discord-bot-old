@@ -17,6 +17,7 @@ import logging
 import json
 import asyncio
 import os
+import requests
 
 import discord
 import bot
@@ -226,9 +227,13 @@ def sync_whitelist():
         if config_path("manager.whitelist.upload", False):
             ptero_sftp_upload(srv_id, tmp_file_name, "/whitelist.json")
 
-        # Reload whitelist
-        if config_path("manager.whitelist.reload", False):
-            ptero.client.send_console_command(srv_id, "whitelist reload")
+        try:
+            # Reload whitelist
+            if config_path("manager.whitelist.reload", False):
+                ptero.client.send_console_command(srv_id, "whitelist reload")
+        except requests.exceptions.HTTPError as e:
+            log.warn("whitelist realod failed: " + str(e.response.content))
+            continue
 
 #####################
 # Rank Methods      #
