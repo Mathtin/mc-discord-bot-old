@@ -641,9 +641,6 @@ async def get_profile(client: bot.DiscordBot, mgs_obj: discord.Message, name: st
 
     await mgs_obj.channel.send("##### SEARCH START #####")
 
-    if re.match('^<@\d+>$', name):
-        name = int(re.match('^<@(\d+)>$', name).group(1))
-
     for table in DB.dynamic:
         for profile in table:
             ign = profile['ign']
@@ -651,7 +648,7 @@ async def get_profile(client: bot.DiscordBot, mgs_obj: discord.Message, name: st
 
             if user.name == name or user.name + user.discriminator == name or f'{user.name}#{user.discriminator}' == name:
                 row_str = f'Found {user.mention}\'s dynamic profile (same name)\n' + convert(profile)
-            elif user.id == name:
+            elif user.mention == name:
                 row_str = f'Found {user.mention}\'s dynamic profile (by mentioning)\n' + convert(profile)
             elif user.display_name == name:
                 row_str = f'Found {user.mention}\'s dynamic profile (same display name)\n' + convert(profile)
