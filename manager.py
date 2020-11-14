@@ -505,7 +505,7 @@ async def edit_profile(client: bot.DiscordBot, msg: discord.Message):
         await init(client)
         return
     if is_full_profile(old_profile):
-        new_profile = DB.find_dynamic_whitelisted(msg.id)
+        new_profile = DB.find_dynamic_whitelisted(old_profile['ign'])
         if new_profile is not None and new_profile['ign'] == old_profile['ign']:
             return
     sync_whitelist()
