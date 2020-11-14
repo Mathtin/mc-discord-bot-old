@@ -246,7 +246,7 @@ def sync_whitelist():
             if config_path("manager.whitelist.reload", False):
                 ptero.client.send_console_command(srv_id, "whitelist reload")
         except requests.exceptions.HTTPError as e:
-            log.warn("whitelist realod failed: " + str(e.response.content))
+            log.warn("whitelist reload failed: " + str(e.response.content))
             continue
 
 #####################
