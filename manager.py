@@ -222,6 +222,7 @@ def build_whitelist_json():
     return json.dumps(whitelist)
 
 def sync_whitelist():
+    log.info("Syncing whitelist")
     # Dump db and whitelist on disk
     DB.save()
     tmp_file_name = "whitelist.json"
@@ -238,9 +239,13 @@ def sync_whitelist():
         if srv_id not in config_path("manager.whitelist.servers", []):
             continue
 
+        log.info(f"Uploading whitelist to [{srv_id}]")
+
         # Upload whitelist.json
         if config_path("manager.whitelist.upload", False):
             ptero_sftp_upload(srv_id, tmp_file_name, "/whitelist.json")
+
+        log.info(f"Reloading whitelist on [{srv_id}]")
 
         try:
             # Reload whitelist
