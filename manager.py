@@ -89,7 +89,10 @@ class DB:
     def remove_dynamic(msg_id):
         for table in DB.dynamic:
             if msg_id in table.msg_id:
-                table.remove(table.msg_id[msg_id][0])
+                res = table.msg_id[msg_id][0]
+                table.remove(res)
+                return res
+        return None
 
     @staticmethod
     def find_dynamic_whitelisted(ign):
@@ -99,6 +102,17 @@ class DB:
             if ign in DB.dynamic.deprecated.ign:
                 return DB.dynamic.deprecated.ign[ign][0]
         return None
+
+    @staticmethod
+    def remove_all_by_user(user: discord.User):
+        res = []
+        for table in DB.dynamic:
+            for profile in table:
+                it_user = profile['msg'].author
+                if user.id == it_user.id:
+                    res.append(profile)
+                    table.remove(profile)
+        return res
 
 
 ptero = PterodactylClient('http://' + os.environ.get("PTERODACTYL_DOMAIN"), os.environ.get("PTERODACTYL_TOKEN"))
@@ -483,8 +497,16 @@ async def new_profile(client: bot.DiscordBot, message: discord.Message):
     sync_whitelist()
 
 async def edit_profile(client: bot.DiscordBot, msg: discord.Message):
-    DB.remove_dynamic(msg.id)
+    old_profile = DB.remove_dynamic(msg.id)
     await handle_profile_message(client, msg)
+    if old_profile is None:
+        log.error("Unknown profile detected! Reloading!")
+        await init(client)
+        return
+    if is_full_profile(old_profile):
+        new_profile = DB.find_dynamic_whitelisted(msg.id)
+        if new_profile is not None and new_profile['ign'] == old_profile['ign']:
+            return
     sync_whitelist()
 
 async def delete_profile(client: bot.DiscordBot, msg_id: int):
@@ -492,8 +514,14 @@ async def delete_profile(client: bot.DiscordBot, msg_id: int):
     sync_whitelist()
 
 async def user_left(client: bot.DiscordBot, member: discord.Member):
-    log.warn(f"User {member.name} left server, reloading data")
-    await init(client)
+    log.warn(f"User {member.name} left server, moving profiles")
+    deleted_profiles = DB.remove_all_by_user(member)
+    if config_path("manager.profile.deprecated.delete", False):
+        for profile in deleted_profiles:
+            await profile['msg'].delete()
+    else:
+        for profile in deleted_profiles:
+            await handle_deprecated_profile_message(client, profile['msg'])
 
 ############################
 # Control command Handlers #
@@ -617,7 +645,7 @@ async def get_profile(client: bot.DiscordBot, mgs_obj: discord.Message, name: st
             ign = profile['ign']
             user = profile['msg'].author
 
-            if user.name == name or user.name + user.discriminator == name:
+            if user.name == name or user.name + user.discriminator == name or f'{user.name}#{user.discriminator}' == name:
                 row_str = f'Found {user.mention}\'s dynamic profile (same name)\n' + convert(profile)
             elif user.display_name == name:
                 row_str = f'Found {user.mention}\'s dynamic profile (same display name)\n' + convert(profile)
