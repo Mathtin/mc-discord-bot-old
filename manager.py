@@ -540,16 +540,7 @@ async def new_profile(client: bot.DiscordBot, message: discord.Message):
 
 async def edit_profile(client: bot.DiscordBot, msg: discord.Message):
     log.info(f'Profile edit detected')
-    old_profile = DB.remove_dynamic(msg.id)
     await handle_profile_message(client, msg)
-    if old_profile is None:
-        log.error("Unknown profile detected! Reloading!")
-        await init(client)
-        return
-    if is_full_profile(old_profile):
-        new_profile = DB.find_dynamic_whitelisted(old_profile['ign'])
-        if new_profile is not None and new_profile['ign'] == old_profile['ign']:
-            return
     sync_whitelist()
 
 async def delete_profile(client: bot.DiscordBot, msg_id: int):
