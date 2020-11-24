@@ -142,6 +142,10 @@ class TableContext(object):
                         del index[value]
                     return
 
+    def __enumerate(self):
+        for i, row in enumerate(self.table):
+            row['id'] = i
+
     def build_index(self):
         if self.indexes is None:
             return
@@ -162,6 +166,7 @@ class TableContext(object):
             raise IndexError(f'No such id {id} in table "{self.name}"({table_size})')
         del self.table[id]
         self.__remove_from_index(row)
+        self.__enumerate()
 
     def __getitem__(self, id: int):
         table_size = len(self.table)
