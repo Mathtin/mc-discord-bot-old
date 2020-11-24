@@ -8,6 +8,8 @@ whitelist.json
 persist_whitelist.json
 ranks.json
 config.py
+player_ftbu_ranks.txt
+player_ranks.txt
 
 # C extensions
 *.so

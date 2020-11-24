@@ -239,27 +239,28 @@ def sync_whitelist():
         if srv_id not in config_path("manager.whitelist.servers", []):
             continue
 
-        log.info(f"Uploading whitelist to [{srv_id}]")
 
         # Upload whitelist.json
         if config_path("manager.whitelist.upload", False):
+            log.info(f"Uploading whitelist to [{srv_id}]")
             ptero_sftp_upload(srv_id, tmp_file_name, "/whitelist.json")
 
-        log.info(f"Reloading whitelist on [{srv_id}]")
 
-        try:
-            # Reload whitelist
-            if config_path("manager.whitelist.reload", False):
+        if config_path("manager.whitelist.reload", False):
+            log.info(f"Reloading whitelist on [{srv_id}]")
+            try:
+                # Reload whitelist
                 ptero.client.send_console_command(srv_id, "whitelist reload")
-        except requests.exceptions.HTTPError as e:
-            log.warn("whitelist reload failed: " + str(e.response.content))
-            continue
+            except requests.exceptions.HTTPError as e:
+                log.warn("whitelist reload failed: " + str(e.response.content))
+                continue
 
 #####################
 # Rank Methods      #
 #####################
 
 def sync_ranks():
+    log.info("Syncing ranks")
     # Dump db on disk
     DB.save()
 
@@ -305,6 +306,28 @@ def build_ftbu_ranks_data():
 
     return '\n'.join(formated_entries)
 
+def build_ftbu_ranks_data2():
+    entries = {}
+
+    for table in DB.ranks:
+        for row in table:
+            ign = row['ign']
+            if ign in entries:
+                entries[ign]['ranks'].append(table.name)
+            else:
+                entries[ign] = {
+                    'ign': row['ign'],
+                    'ranks': [table.name]
+                }
+    
+    entrie_format = '{ign}: {ranks}\n'
+    entrie_conv = lambda e: {'ign': e['ign'], 'ranks': ', '.join(e['ranks'])}
+
+    converted_entries = [entrie_conv(entries[ign]) for ign in entries]
+    formated_entries = [entrie_format.format(**e) for e in converted_entries]
+
+    return '\n'.join(formated_entries)
+
 
 def ptero_ftbutilities_rank_sync(srv_id):
 
@@ -316,6 +339,15 @@ def ptero_ftbutilities_rank_sync(srv_id):
     # Upload players.txt
     if config_path("manager.rank.upload", False):
         ptero_sftp_upload(srv_id, tmp_file_name, "/local/ftbutilities/players.txt")
+
+    # Dump player_ranks.txt
+    tmp_file_name = "player_ranks.txt"
+    with open(tmp_file_name, "w") as f:
+        f.write(build_ftbu_ranks_data2())
+    
+    # Upload players.txt
+    if config_path("manager.rank.upload", False):
+        ptero_sftp_upload(srv_id, tmp_file_name, "/local/ftbutilities/player_ranks.txt")
 
 def ptero_spigot_rank_sync(srv_id):
     pass
@@ -449,9 +481,9 @@ async def handle_duplicate_deprecated_profile_ign(client: bot.DiscordBot, or_pro
 ##################
 
 async def init(client: bot.DiscordBot):
+    log.info(f'Initializing')
     # Lock current async context
-    init_lock = asyncio.Lock()
-    async with init_lock:
+    async with client.mtx:
         # Init db
         DB.load()
         DB.dynamic.clear()
@@ -499,10 +531,12 @@ async def init(client: bot.DiscordBot):
         sync_ranks()
 
 async def new_profile(client: bot.DiscordBot, message: discord.Message):
+    log.info(f'New profile detected')
     await handle_profile_message(client, message)
     sync_whitelist()
 
 async def edit_profile(client: bot.DiscordBot, msg: discord.Message):
+    log.info(f'Profile edit detected')
     old_profile = DB.remove_dynamic(msg.id)
     await handle_profile_message(client, msg)
     if old_profile is None:
@@ -516,8 +550,11 @@ async def edit_profile(client: bot.DiscordBot, msg: discord.Message):
     sync_whitelist()
 
 async def delete_profile(client: bot.DiscordBot, msg_id: int):
-    DB.remove_dynamic(msg_id)
-    sync_whitelist()
+    log.info(f'Profile remove detected')
+    profile = DB.remove_dynamic(msg_id)
+    if profile is not None:
+        log.info(f'Profile deleted: {profile}')
+        sync_whitelist()
 
 async def user_left(client: bot.DiscordBot, member: discord.Member):
     log.warn(f"User {member.name} left server, moving profiles")

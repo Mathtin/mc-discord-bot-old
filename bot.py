@@ -41,6 +41,7 @@ class DiscordBot(discord.Client):
         DiscordBotLogHandler.connect_client(self)
         self.token = os.getenv('DISCORD_TOKEN')
         self.guild_id = int(os.getenv('DISCORD_GUILD'))
+        self.mtx = asyncio.Lock()
 
         # Values initiated on_ready
         self.guild = None
