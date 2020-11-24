@@ -447,7 +447,10 @@ async def handle_profile_update(client: bot.DiscordBot, old_profile: dict, profi
     DB.remove_dynamic(old_profile['msg_id'])
     if old_profile['msg'].id != profile['msg'].id:
         if config_path("manager.profile.update.old.delete", False):
-            await old_profile['msg'].delete()
+            try:
+                await old_profile['msg'].delete()
+            except discord.errors.NotFound:
+                pass
         else:
             old_profile['error'] = "old profile"
             DB.dynamic.invalid.add(old_profile)
